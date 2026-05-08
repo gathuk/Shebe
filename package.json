@@ -1,0 +1,11 @@
+{
+  "name": "shebe-osint",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "libphonenumber-js": "^1.11.0"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^2.8.1"
+  }
+}
