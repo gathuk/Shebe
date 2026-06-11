@@ -50,11 +50,14 @@
         <button class="tab-btn" data-type="phone">
           <i class="fa-solid fa-phone"></i> Phone
         </button>
+        <button class="tab-btn" data-type="hybrid">
+          <i class="fa-solid fa-layer-group"></i> Hybrid
+        </button>
       </div>
 
       <form id="searchForm" class="search-form" autocomplete="off">
         <input type="hidden" id="queryType" value="name" />
-        <div class="input-group">
+        <div class="input-group" id="singleInputGroup">
           <i class="fa-solid fa-magnifying-glass input-icon"></i>
           <input
             type="text"
@@ -68,6 +71,26 @@
             <i class="fa-solid fa-arrow-right btn-icon"></i>
           </button>
         </div>
+
+        <div id="hybridInputGroup" class="hybrid-input-group hidden">
+          <div class="input-group">
+            <i class="fa-solid fa-user input-icon"></i>
+            <input type="text" id="hybridName" class="search-input" placeholder="Full name (optional)" />
+          </div>
+          <div class="input-group">
+            <i class="fa-solid fa-envelope input-icon"></i>
+            <input type="text" id="hybridEmail" class="search-input" placeholder="Email address (optional)" />
+          </div>
+          <div class="input-group">
+            <i class="fa-solid fa-phone input-icon"></i>
+            <input type="text" id="hybridPhone" class="search-input" placeholder="Phone number (optional, e.g. +14155552671)" />
+          </div>
+          <button type="submit" class="search-btn hybrid-submit-btn">
+            <span class="btn-text">Generate Hybrid Report</span>
+            <i class="fa-solid fa-arrow-right btn-icon"></i>
+          </button>
+        </div>
+
         <p class="input-hint" id="inputHint">Use full name for best results. International format for phone (e.g. +14155552671).</p>
       </form>
 

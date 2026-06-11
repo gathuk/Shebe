@@ -14,6 +14,7 @@ const HINT = {
   name:  'Use the person\'s full name for best results. First and last name required.',
   email: 'Enter the full email address including domain.',
   phone: 'Use international format with country code (e.g. +1 for US, +44 for UK).',
+  hybrid: 'Combine any of name, email, and phone — the more you provide, the more accurate the cross-referenced results.',
 };
 
 // ── Init ─────────────────────────────────────────────────────
@@ -31,11 +32,24 @@ function setupTabs() {
       btn.classList.add('active');
       currentType = btn.dataset.type;
       document.getElementById('queryType').value = currentType;
-      const input = document.getElementById('queryInput');
-      input.placeholder = PLACEHOLDER[currentType];
-      input.value = '';
+
+      const singleGroup = document.getElementById('singleInputGroup');
+      const hybridGroup = document.getElementById('hybridInputGroup');
+
+      if (currentType === 'hybrid') {
+        hide('singleInputGroup');
+        singleGroup.querySelector('.search-input').required = false;
+        show('hybridInputGroup');
+      } else {
+        const input = document.getElementById('queryInput');
+        input.placeholder = PLACEHOLDER[currentType];
+        input.value = '';
+        input.required = true;
+        show('singleInputGroup');
+        hide('hybridInputGroup');
+        input.focus();
+      }
       document.getElementById('inputHint').textContent = HINT[currentType];
-      input.focus();
     });
   });
 }
@@ -43,14 +57,28 @@ function setupTabs() {
 function setupForm() {
   document.getElementById('searchForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+
+    if (currentType === 'hybrid') {
+      const name = document.getElementById('hybridName').value.trim();
+      const email = document.getElementById('hybridEmail').value.trim();
+      const phone = document.getElementById('hybridPhone').value.trim();
+      if (!name && !email && !phone) {
+        showError('Provide at least one of: name, email, phone');
+        show('resultsSection');
+        return;
+      }
+      await runSearch('hybrid', { name, email, phone });
+      return;
+    }
+
     const query = document.getElementById('queryInput').value.trim();
     if (!query) return;
-    await runSearch(currentType, query);
+    await runSearch(currentType, { query });
   });
 }
 
 // ── Search ───────────────────────────────────────────────────
-async function runSearch(type, query) {
+async function runSearch(type, fields) {
   showLoading();
 
   // Animate loader steps
@@ -72,7 +100,7 @@ async function runSearch(type, query) {
     const resp = await fetch('/api/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, query }),
+      body: JSON.stringify({ type, ...fields }),
     });
 
     clearInterval(stepInterval);
@@ -137,6 +165,7 @@ function renderReport(data, type) {
   if (type === 'email')  renderEmail(data, targetCard, content);
   if (type === 'phone')  renderPhone(data, targetCard, content);
   if (type === 'name')   renderName(data, targetCard, content);
+  if (type === 'hybrid') renderHybrid(data, targetCard, content);
 
   show('resultsSection');
   document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -483,6 +512,64 @@ function renderName(d, targetEl, grid) {
   if (d.google_dorks) {
     grid.appendChild(card('Google Dorks', 'fa-code', 'icon-orange', buildLinkList(d.google_dorks)));
   }
+}
+
+// ── HYBRID RENDER ────────────────────────────────────────────
+function renderHybrid(d, targetEl, grid) {
+  if (d.error) {
+    targetEl.innerHTML = `<div class="target-avatar-placeholder"><i class="fa-solid fa-layer-group"></i></div>
+      <div class="target-info"><div class="target-label">Hybrid Search</div><div class="target-name">—</div></div>`;
+    grid.appendChild(errorBlock(d.error));
+    return;
+  }
+
+  const t = d.target || {};
+  const tags = [
+    t.name  ? tag(`Name: ${t.name}`, 'blue') : '',
+    t.email ? tag(`Email: ${t.email}`, 'purple') : '',
+    t.phone ? tag(`Phone: ${t.phone}`, 'green') : '',
+  ].filter(Boolean).join('');
+
+  targetEl.innerHTML = `
+    <div class="target-avatar-placeholder"><i class="fa-solid fa-layer-group"></i></div>
+    <div class="target-info">
+      <div class="target-label">Hybrid Search</div>
+      <div class="target-name">${esc([t.name, t.email, t.phone].filter(Boolean).join(' / '))}</div>
+      <div class="target-tags">${tags}</div>
+    </div>`;
+
+  // Cross-reference card
+  const cr = d.cross_reference || {};
+  let crContent = '';
+  if (cr.notes?.length) {
+    crContent += `<div class="note-list">${cr.notes.map(n =>
+      `<div class="note-item"><i class="fa-solid fa-lightbulb"></i>${esc(n)}</div>`).join('')}</div>`;
+  }
+  if (cr.search_links && Object.keys(cr.search_links).length) {
+    crContent += `<div style="margin-top:10px"><div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px">Combined Search</div>${buildLinkList(cr.search_links)}</div>`;
+  }
+  if (cr.google_dorks && Object.keys(cr.google_dorks).length) {
+    crContent += `<div style="margin-top:10px"><div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px">Cross-Reference Dorks</div>${buildLinkList(cr.google_dorks)}</div>`;
+  }
+  if (!crContent) {
+    crContent = `<div class="no-data"><i class="fa-solid fa-circle-info"></i>Provide two or more identifiers (name, email, phone) for cross-reference links.</div>`;
+  }
+  grid.appendChild(card('Cross-Reference', 'fa-link', 'icon-orange', crContent));
+
+  // Sub-reports
+  if (d.name)  appendSubReport(grid, 'Name Report', 'fa-user', d.name, renderName);
+  if (d.email) appendSubReport(grid, 'Email Report', 'fa-envelope', d.email, renderEmail);
+  if (d.phone) appendSubReport(grid, 'Phone Report', 'fa-phone', d.phone, renderPhone);
+}
+
+function appendSubReport(grid, title, iconCls, data, renderFn) {
+  const divider = document.createElement('div');
+  divider.className = 'hybrid-section-divider';
+  divider.innerHTML = `<i class="fa-solid ${esc(iconCls)}"></i> <span>${esc(title)}</span>`;
+  grid.appendChild(divider);
+
+  const dummyTarget = document.createElement('div');
+  renderFn(data, dummyTarget, grid);
 }
 
 // ── Helpers ──────────────────────────────────────────────────

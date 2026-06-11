@@ -216,6 +216,18 @@ body {
   margin-top: 10px;
 }
 
+.hybrid-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hybrid-submit-btn {
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  padding: 14px 24px;
+}
+
 .disclaimer {
   display: flex;
   align-items: flex-start;
@@ -430,6 +442,21 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
   gap: 20px;
+}
+
+.hybrid-section-divider {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text2);
+  margin-top: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
 }
 
 /* ── Report Cards ──────────────────────────────────────────── */

@@ -523,6 +523,80 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
   };
 }
 
+// ── Hybrid OSINT ─────────────────────────────────────────────────────────────
+
+async function gatherHybrid(input: { name?: string; email?: string; phone?: string }): Promise<Record<string, unknown>> {
+  const name = (input.name ?? "").trim();
+  const email = (input.email ?? "").trim();
+  const phone = (input.phone ?? "").trim();
+
+  if (!name && !email && !phone) {
+    return { error: "Provide at least one of: name, email, phone", valid: false };
+  }
+
+  const [nameResult, emailResult, phoneResult] = await Promise.all([
+    name ? gatherName(name) : Promise.resolve(null),
+    email ? gatherEmail(email) : Promise.resolve(null),
+    phone ? gatherPhone(phone) : Promise.resolve(null),
+  ]);
+
+  const enc = encodeURIComponent;
+  const terms: string[] = [];
+  if (name) terms.push(`"${name}"`);
+  if (email) terms.push(`"${email}"`);
+  if (phone) {
+    const e164 = (phoneResult?.["formats"] as Record<string, string> | undefined)?.["E.164"] ?? phone;
+    terms.push(`"${e164}"`);
+  }
+
+  const crossSearchLinks: Record<string, string> = {};
+  const crossDorks: Record<string, string> = {};
+
+  if (terms.length >= 2) {
+    const combinedOr = terms.join(" OR ");
+    const combinedAnd = terms.join(" ");
+    crossSearchLinks["Google (any match)"] = `https://www.google.com/search?q=${enc(combinedOr)}`;
+    crossSearchLinks["Google (all terms)"] = `https://www.google.com/search?q=${enc(combinedAnd)}`;
+    crossSearchLinks["Bing (all terms)"] = `https://www.bing.com/search?q=${enc(combinedAnd)}`;
+    crossDorks["LinkedIn (all terms)"] = `https://www.google.com/search?q=${enc(`site:linkedin.com ${combinedAnd}`)}`;
+    crossDorks["Facebook (all terms)"] = `https://www.google.com/search?q=${enc(`site:facebook.com ${combinedAnd}`)}`;
+    crossDorks["Social profiles (any term)"] = `https://www.google.com/search?q=${enc(`(${combinedOr}) (site:linkedin.com OR site:facebook.com OR site:twitter.com OR site:instagram.com)`)}`;
+  }
+
+  if (name && phone) {
+    const e164 = (phoneResult?.["formats"] as Record<string, string> | undefined)?.["E.164"] ?? phone;
+    crossDorks["Name + Phone (M-Pesa/Paybill)"] = `https://www.google.com/search?q=${enc(`"${name}" "${e164}" (mpesa OR paybill OR till)`)}`;
+  }
+  if (name && email) {
+    crossDorks["Name + Email"] = `https://www.google.com/search?q=${enc(`"${name}" "${email}"`)}`;
+  }
+  if (email && phone) {
+    const e164 = (phoneResult?.["formats"] as Record<string, string> | undefined)?.["E.164"] ?? phone;
+    crossDorks["Email + Phone"] = `https://www.google.com/search?q=${enc(`"${email}" "${e164}"`)}`;
+  }
+
+  // Confidence: how many independent identifiers agree on key signals
+  const matchSignals: string[] = [];
+  if (name && email) matchSignals.push("Name and email both provided — cross-check social profiles for matching identity");
+  if (name && phone) matchSignals.push("Name and phone both provided — cross-check messaging apps and classifieds for matching identity");
+  if (email && phone) matchSignals.push("Email and phone both provided — look for accounts that expose both (e.g. marketplace listings)");
+  if (name && email && phone) matchSignals.push("All three identifiers provided — highest accuracy; prioritize sources that corroborate all three");
+
+  return {
+    target: { name: name || null, email: email || null, phone: phone || null },
+    valid: true,
+    name: nameResult,
+    email: emailResult,
+    phone: phoneResult,
+    cross_reference: {
+      identifiers_used: terms.length,
+      notes: matchSignals,
+      search_links: crossSearchLinks,
+      google_dorks: crossDorks,
+    },
+  };
+}
+
 // ── Handler ──────────────────────────────────────────────────────────────────
 
 export default async (req: Request, _context: Context) => {
@@ -533,7 +607,7 @@ export default async (req: Request, _context: Context) => {
     });
   }
 
-  let data: { type?: string; query?: string };
+  let data: { type?: string; query?: string; name?: string; email?: string; phone?: string };
   try {
     data = await req.json();
   } catch {
@@ -544,26 +618,41 @@ export default async (req: Request, _context: Context) => {
   }
 
   const queryType = (data.type ?? "").toLowerCase().trim();
-  const query = (data.query ?? "").trim();
 
-  if (!query) {
-    return new Response(JSON.stringify({ error: "Search query is required" }), {
-      status: 400,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  if (!["email", "phone", "name"].includes(queryType)) {
-    return new Response(JSON.stringify({ error: "type must be one of: email, phone, name" }), {
+  if (!["email", "phone", "name", "hybrid"].includes(queryType)) {
+    return new Response(JSON.stringify({ error: "type must be one of: email, phone, name, hybrid" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
 
   let result: Record<string, unknown>;
-  if (queryType === "email") result = await gatherEmail(query);
-  else if (queryType === "phone") result = await gatherPhone(query);
-  else result = await gatherName(query);
+  let query: string;
+
+  if (queryType === "hybrid") {
+    const name = (data.name ?? "").trim();
+    const email = (data.email ?? "").trim();
+    const phone = (data.phone ?? "").trim();
+    if (!name && !email && !phone) {
+      return new Response(JSON.stringify({ error: "Provide at least one of: name, email, phone" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    query = [name, email, phone].filter(Boolean).join(" / ");
+    result = await gatherHybrid({ name, email, phone });
+  } else {
+    query = (data.query ?? "").trim();
+    if (!query) {
+      return new Response(JSON.stringify({ error: "Search query is required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (queryType === "email") result = await gatherEmail(query);
+    else if (queryType === "phone") result = await gatherPhone(query);
+    else result = await gatherName(query);
+  }
 
   result["meta"] = {
     generated_at: new Date().toISOString(),
