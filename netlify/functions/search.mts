@@ -31,7 +31,39 @@ const MAJOR_PROVIDERS: Record<string, string> = {
   "yandex.com": "Yandex Mail", "yandex.ru": "Yandex Mail",
   "mail.com": "Mail.com", "gmx.com": "GMX Mail", "gmx.net": "GMX Mail",
   "fastmail.com": "Fastmail", "fastmail.fm": "Fastmail",
+  // Kenya / East Africa ISPs and providers
+  "jambo.co.ke": "Jambo (Kenya)", "wananchi.com": "Wananchi Telecom (Kenya)",
+  "swiftkenya.com": "Swift Global (Kenya)", "africaonline.co.ke": "Africa Online (Kenya)",
+  "iconnect.co.ke": "iConnect (Kenya)", "kenyaweb.com": "KenyaWeb",
+  "saf.co.ke": "Safaricom Mail (Kenya)", "students.uonbi.ac.ke": "University of Nairobi",
+  "students.ku.ac.ke": "Kenyatta University", "strathmore.edu": "Strathmore University (Kenya)",
 };
+
+const KENYA_MOBILE_PREFIXES: Record<string, string> = {
+  "0700": "Safaricom", "0701": "Safaricom", "0702": "Safaricom", "0703": "Safaricom",
+  "0704": "Safaricom", "0705": "Safaricom", "0706": "Safaricom", "0707": "Safaricom",
+  "0708": "Safaricom", "0709": "Safaricom", "0710": "Safaricom", "0711": "Safaricom",
+  "0712": "Safaricom", "0713": "Safaricom", "0714": "Safaricom", "0715": "Safaricom",
+  "0716": "Safaricom", "0717": "Safaricom", "0718": "Safaricom", "0719": "Safaricom",
+  "0720": "Safaricom", "0721": "Safaricom", "0722": "Safaricom", "0723": "Safaricom",
+  "0724": "Safaricom", "0725": "Safaricom", "0726": "Safaricom", "0727": "Safaricom",
+  "0728": "Safaricom", "0729": "Safaricom",
+  "0740": "Airtel Kenya", "0750": "Airtel Kenya", "0741": "Airtel Kenya",
+  "0742": "Airtel Kenya", "0743": "Airtel Kenya", "0746": "Airtel Kenya",
+  "0775": "Airtel Kenya", "0786": "Airtel Kenya", "0787": "Airtel Kenya",
+  "0789": "Airtel Kenya",
+  "0730": "Equitel", "0731": "Equitel", "0732": "Equitel",
+  "0747": "Telkom Kenya", "0748": "Telkom Kenya", "0749": "Telkom Kenya",
+  "0776": "Telkom Kenya", "0777": "Telkom Kenya", "0778": "Telkom Kenya",
+  "0779": "Telkom Kenya",
+  "0747000": "Faiba (Jamii Telecom)",
+};
+
+function getKenyaCarrier(nationalNumber: string): string {
+  const local = nationalNumber.startsWith("0") ? nationalNumber : `0${nationalNumber}`;
+  const prefix = local.slice(0, 4);
+  return KENYA_MOBILE_PREFIXES[prefix] ?? "Unknown";
+}
 
 const COUNTRY_NAMES: Record<string, string> = {
   "US": "United States", "GB": "United Kingdom", "CA": "Canada",
@@ -313,6 +345,24 @@ async function gatherPhone(phoneInput: string): Promise<Record<string, unknown>>
   if (lineType === "Mobile") notes.push("Mobile number — carrier may provide approximate location info.");
   if (lineType === "Toll Free") notes.push("Toll-free number — typically a business line.");
 
+  const carrier = regionCode === "KE" ? getKenyaCarrier(String(parsed.nationalNumber)) : "Unknown";
+
+  const searchLinks: Record<string, string> = {
+    "Google (exact)": `https://www.google.com/search?q="${e164}"`,
+    "Google (national)": `https://www.google.com/search?q="${formats["NATIONAL"] ?? ""}"`,
+    "Google Dork": `https://www.google.com/search?q="${e164}"+OR+"${formats["NATIONAL"] ?? ""}"`,
+    "Bing": `https://www.bing.com/search?q="${e164}"`,
+    "Truecaller": `https://www.truecaller.com/search/${regionCode.toLowerCase()}/${nationalClean}`,
+    "SpyDialer": `https://www.spydialer.com/default.aspx?ph=${nationalClean}`,
+    "WhoCallsMe": `https://www.whocalledus.com/number/${numberDigits}`,
+  };
+
+  if (["KE", "NG", "ZA", "GH", "UG", "TZ"].includes(regionCode)) {
+    searchLinks["Jiji (classifieds)"] = `https://jiji.co.ke/search?query=${encodeURIComponent(nationalClean)}`;
+    searchLinks["Facebook (number search)"] = `https://www.facebook.com/search/top?q=${encodeURIComponent(e164)}`;
+    searchLinks["Google Dork (M-Pesa/Paybill)"] = `https://www.google.com/search?q="${nationalClean}"+OR+"${e164}"+mpesa+OR+paybill+OR+till`;
+  }
+
   return {
     target: phone,
     valid: isValid,
@@ -322,20 +372,12 @@ async function gatherPhone(phoneInput: string): Promise<Record<string, unknown>>
     country_name: countryName,
     national_number: String(parsed.nationalNumber),
     location: countryName || "Unknown",
-    carrier: "Unknown",
+    carrier,
     line_type: lineType,
     timezones: [],
     formats,
     notes,
-    search_links: {
-      "Google (exact)": `https://www.google.com/search?q="${e164}"`,
-      "Google (national)": `https://www.google.com/search?q="${formats["NATIONAL"] ?? ""}"`,
-      "Google Dork": `https://www.google.com/search?q="${e164}"+OR+"${formats["NATIONAL"] ?? ""}"`,
-      "Bing": `https://www.bing.com/search?q="${e164}"`,
-      "Truecaller": `https://www.truecaller.com/search/${regionCode.toLowerCase()}/${nationalClean}`,
-      "SpyDialer": `https://www.spydialer.com/default.aspx?ph=${nationalClean}`,
-      "WhoCallsMe": `https://www.whocalledus.com/number/${numberDigits}`,
-    },
+    search_links: searchLinks,
     communication_links: {
       "WhatsApp": `https://wa.me/${numberDigits}`,
       "Telegram": `https://t.me/+${numberDigits}`,
@@ -459,6 +501,9 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
       "YouTube": `https://www.youtube.com/results?search_query=${encodedFull}`,
       "Pipl": `https://pipl.com/search/?q=${encodedName}`,
       "Spokeo": `https://www.spokeo.com/${enc(name.replace(/ /g, "-"))}`,
+      "BrighterMonday (East Africa jobs/CVs)": `https://www.brightermonday.co.ke/jobs?q=${encodedName}`,
+      "Jiji (Africa marketplace)": `https://jiji.co.ke/search?query=${encodedName}`,
+      "M-Changa (Kenya fundraising)": `https://www.mchanga.africa/search?q=${encodedName}`,
     },
     google_dorks: {
       "Full name (exact)": `https://www.google.com/search?q=${encodedFull}`,
@@ -471,6 +516,8 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
       "Email addresses": `https://www.google.com/search?q=${encodedFull}+%40gmail.com+OR+%40yahoo.com+OR+%40outlook.com`,
       "Phone numbers": `https://www.google.com/search?q=${encodedFull}+phone+OR+tel+OR+mobile`,
       "Social (all)": `https://www.google.com/search?q=${encodedFull}+site:linkedin.com+OR+site:facebook.com+OR+site:twitter.com+OR+site:instagram.com`,
+      "Kenyan news (Tuko, Standard, Nation, Citizen)": `https://www.google.com/search?q=${encodedFull}+site:tuko.co.ke+OR+site:standardmedia.co.ke+OR+site:nation.africa+OR+site:citizen.digital`,
+      "African business records": `https://www.google.com/search?q=${encodedFull}+site:opencorporates.com+OR+site:brs.go.ke`,
     },
     username_profile_links: usernameLinks,
   };
