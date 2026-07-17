@@ -390,6 +390,55 @@ function renderPhone(d, targetEl, grid) {
   ].filter(Boolean).join('');
   grid.appendChild(card('Number Details', 'fa-circle-info', 'icon-blue', detailRows));
 
+  // Reverse Lookup — Caller ID
+  const rev = d.reverse_lookup ?? {};
+  const nv  = d.numverify ?? {};
+  let revContent = '';
+
+  if (!rev.configured && !nv.configured) {
+    revContent = `<div class="no-data">
+      <i class="fa-solid fa-key"></i>
+      Caller name lookup requires API credentials.<br/>
+      <small>Set <code>TWILIO_ACCOUNT_SID</code> + <code>TWILIO_AUTH_TOKEN</code> for caller ID (CNAM),
+      or <code>NUMVERIFY_API_KEY</code> for carrier enrichment.</small>
+    </div>`;
+  } else {
+    const rows = [];
+
+    if (rev.configured) {
+      if (rev.error) {
+        rows.push(`<div class="no-data" style="margin-bottom:8px"><i class="fa-solid fa-xmark"></i> Twilio: ${esc(String(rev.error))}</div>`);
+      } else if (rev.caller_name) {
+        rows.push(row('Caller Name', String(rev.caller_name)));
+        const callerTypeLabel = rev.caller_type === 'CONSUMER' ? 'Consumer (individual)'
+          : rev.caller_type === 'BUSINESS' ? 'Business'
+          : rev.caller_type ? String(rev.caller_type) : null;
+        if (callerTypeLabel) rows.push(row('Name Type', callerTypeLabel));
+        if (rev.carrier_name) rows.push(row('Carrier (live)', String(rev.carrier_name)));
+        if (rev.line_type)    rows.push(row('Line Type (live)', String(rev.line_type)));
+        if (rev.mobile_country_code) rows.push(row('MCC', String(rev.mobile_country_code)));
+        if (rev.mobile_network_code) rows.push(row('MNC', String(rev.mobile_network_code)));
+      } else {
+        rows.push(`<div class="no-data" style="margin-bottom:8px"><i class="fa-solid fa-circle-info"></i> No CNAM record found — number may be unlisted or too new.</div>`);
+        if (rev.carrier_name) rows.push(row('Carrier (live)', String(rev.carrier_name)));
+        if (rev.line_type)    rows.push(row('Line Type (live)', String(rev.line_type)));
+      }
+    }
+
+    if (nv.configured) {
+      if (nv.error) {
+        rows.push(`<div class="no-data"><i class="fa-solid fa-xmark"></i> NumVerify: ${esc(String(nv.error))}</div>`);
+      } else {
+        if (nv.location)  rows.push(row('Location (NumVerify)', String(nv.location)));
+        if (nv.carrier)   rows.push(row('Carrier (NumVerify)', String(nv.carrier)));
+        if (nv.line_type) rows.push(row('Line Type (NumVerify)', String(nv.line_type)));
+      }
+    }
+
+    revContent = rows.join('') || `<div class="no-data"><i class="fa-solid fa-circle-info"></i>No additional lookup data returned.</div>`;
+  }
+  grid.appendChild(card('Reverse Lookup — Caller ID', 'fa-address-card', 'icon-teal', revContent));
+
   // Formats
   if (d.formats) {
     const fmtRows = Object.entries(d.formats).map(([k, v]) => row(k, v)).join('');

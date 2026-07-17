@@ -369,6 +369,67 @@ function numberTypeToString(type: string | undefined): string {
   return map[type ?? ""] ?? "Unknown";
 }
 
+// ── Reverse Phone Lookup ─────────────────────────────────────────────────────
+
+// Twilio Lookup v2 — caller name + live line intelligence (needs TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN)
+async function checkReversePhone(e164: string): Promise<Record<string, unknown>> {
+  const accountSid = Netlify.env.get("TWILIO_ACCOUNT_SID");
+  const authToken  = Netlify.env.get("TWILIO_AUTH_TOKEN");
+  if (!accountSid || !authToken) return { configured: false };
+
+  try {
+    const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=caller_name,line_type_intelligence`;
+    const resp = await fetch(url, {
+      headers: { "Authorization": "Basic " + btoa(`${accountSid}:${authToken}`) },
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({})) as Record<string, unknown>;
+      return { configured: true, error: String(body.message ?? `HTTP ${resp.status}`) };
+    }
+    const data = await resp.json() as Record<string, unknown>;
+    const cn  = data.caller_name as Record<string, unknown> | null;
+    const lti = data.line_type_intelligence as Record<string, unknown> | null;
+    return {
+      configured: true,
+      caller_name:        cn?.caller_name  ?? null,
+      caller_type:        cn?.caller_type  ?? null,   // "CONSUMER" | "BUSINESS"
+      caller_error_code:  cn?.error_code   ?? null,
+      carrier_name:       lti?.carrier_name             ?? null,
+      line_type:          lti?.type                     ?? null,
+      mobile_country_code: lti?.mobile_country_code     ?? null,
+      mobile_network_code: lti?.mobile_network_code     ?? null,
+    };
+  } catch (e: unknown) {
+    return { configured: true, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// NumVerify (apilayer) — carrier + location enrichment (needs NUMVERIFY_API_KEY, free: 250/mo)
+async function checkNumVerify(phone: string): Promise<Record<string, unknown>> {
+  const apiKey = Netlify.env.get("NUMVERIFY_API_KEY");
+  if (!apiKey) return { configured: false };
+
+  try {
+    const url = `https://apilayer.net/api/validate?access_key=${encodeURIComponent(apiKey)}&number=${encodeURIComponent(phone)}&format=1`;
+    const resp = await fetch(url);
+    if (!resp.ok) return { configured: true, error: `HTTP ${resp.status}` };
+    const data = await resp.json() as Record<string, unknown>;
+    const apiErr = data.error as Record<string, unknown> | undefined;
+    if (apiErr) return { configured: true, error: String(apiErr.info ?? "API error") };
+    return {
+      configured: true,
+      valid:                data.valid,
+      location:             data.location,
+      carrier:              data.carrier,
+      line_type:            data.line_type,
+      country_name:         data.country_name,
+      international_format: data.international_format,
+    };
+  } catch (e: unknown) {
+    return { configured: true, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 // Handle partial/wildcard phone numbers where unknown digits are represented as *
 async function gatherPartialPhone(rawInput: string): Promise<Record<string, unknown>> {
   const input = rawInput.trim();
@@ -547,6 +608,10 @@ async function gatherPhone(phoneInput: string): Promise<Record<string, unknown>>
       "Telegram": `https://t.me/+${numberDigits}`,
       "Signal (click to open app)": `https://signal.me/#p/${e164}`,
     },
+    ...await (async () => {
+      const [reverse_lookup, numverify] = await Promise.all([checkReversePhone(e164), checkNumVerify(e164)]);
+      return { reverse_lookup, numverify };
+    })(),
   };
 }
 
