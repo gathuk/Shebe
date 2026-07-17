@@ -39,31 +39,93 @@ const MAJOR_PROVIDERS: Record<string, string> = {
   "students.ku.ac.ke": "Kenyatta University", "strathmore.edu": "Strathmore University (Kenya)",
 };
 
-const KENYA_MOBILE_PREFIXES: Record<string, string> = {
-  "0700": "Safaricom", "0701": "Safaricom", "0702": "Safaricom", "0703": "Safaricom",
-  "0704": "Safaricom", "0705": "Safaricom", "0706": "Safaricom", "0707": "Safaricom",
-  "0708": "Safaricom", "0709": "Safaricom", "0710": "Safaricom", "0711": "Safaricom",
-  "0712": "Safaricom", "0713": "Safaricom", "0714": "Safaricom", "0715": "Safaricom",
-  "0716": "Safaricom", "0717": "Safaricom", "0718": "Safaricom", "0719": "Safaricom",
-  "0720": "Safaricom", "0721": "Safaricom", "0722": "Safaricom", "0723": "Safaricom",
-  "0724": "Safaricom", "0725": "Safaricom", "0726": "Safaricom", "0727": "Safaricom",
-  "0728": "Safaricom", "0729": "Safaricom",
-  "0740": "Airtel Kenya", "0750": "Airtel Kenya", "0741": "Airtel Kenya",
-  "0742": "Airtel Kenya", "0743": "Airtel Kenya", "0746": "Airtel Kenya",
-  "0775": "Airtel Kenya", "0786": "Airtel Kenya", "0787": "Airtel Kenya",
-  "0789": "Airtel Kenya",
-  "0730": "Equitel", "0731": "Equitel", "0732": "Equitel",
-  "0747": "Telkom Kenya", "0748": "Telkom Kenya", "0749": "Telkom Kenya",
-  "0776": "Telkom Kenya", "0777": "Telkom Kenya", "0778": "Telkom Kenya",
-  "0779": "Telkom Kenya",
-  "0747000": "Faiba (Jamii Telecom)",
+const CARRIER_PREFIXES: Record<string, { len: number; map: Record<string, string> }> = {
+  "KE": { len: 4, map: {
+    "0700": "Safaricom", "0701": "Safaricom", "0702": "Safaricom", "0703": "Safaricom",
+    "0704": "Safaricom", "0705": "Safaricom", "0706": "Safaricom", "0707": "Safaricom",
+    "0708": "Safaricom", "0709": "Safaricom", "0710": "Safaricom", "0711": "Safaricom",
+    "0712": "Safaricom", "0713": "Safaricom", "0714": "Safaricom", "0715": "Safaricom",
+    "0716": "Safaricom", "0717": "Safaricom", "0718": "Safaricom", "0719": "Safaricom",
+    "0720": "Safaricom", "0721": "Safaricom", "0722": "Safaricom", "0723": "Safaricom",
+    "0724": "Safaricom", "0725": "Safaricom", "0726": "Safaricom", "0727": "Safaricom",
+    "0728": "Safaricom", "0729": "Safaricom",
+    "0740": "Airtel Kenya", "0741": "Airtel Kenya", "0742": "Airtel Kenya",
+    "0743": "Airtel Kenya", "0746": "Airtel Kenya", "0750": "Airtel Kenya",
+    "0775": "Airtel Kenya", "0786": "Airtel Kenya", "0787": "Airtel Kenya", "0789": "Airtel Kenya",
+    "0730": "Equitel", "0731": "Equitel", "0732": "Equitel",
+    "0747": "Telkom Kenya", "0748": "Telkom Kenya", "0749": "Telkom Kenya",
+    "0776": "Telkom Kenya", "0777": "Telkom Kenya", "0778": "Telkom Kenya", "0779": "Telkom Kenya",
+  }},
+  "NG": { len: 4, map: {
+    "0803": "MTN Nigeria", "0806": "MTN Nigeria", "0703": "MTN Nigeria", "0706": "MTN Nigeria",
+    "0813": "MTN Nigeria", "0816": "MTN Nigeria", "0810": "MTN Nigeria", "0814": "MTN Nigeria",
+    "0903": "MTN Nigeria", "0906": "MTN Nigeria", "0913": "MTN Nigeria", "0916": "MTN Nigeria",
+    "0802": "Airtel Nigeria", "0808": "Airtel Nigeria", "0708": "Airtel Nigeria",
+    "0812": "Airtel Nigeria", "0701": "Airtel Nigeria", "0902": "Airtel Nigeria",
+    "0907": "Airtel Nigeria", "0912": "Airtel Nigeria",
+    "0805": "Glo Nigeria", "0807": "Glo Nigeria", "0705": "Glo Nigeria",
+    "0815": "Glo Nigeria", "0811": "Glo Nigeria", "0905": "Glo Nigeria", "0915": "Glo Nigeria",
+    "0809": "9mobile Nigeria", "0818": "9mobile Nigeria", "0817": "9mobile Nigeria",
+    "0909": "9mobile Nigeria", "0908": "9mobile Nigeria",
+  }},
+  "ZA": { len: 3, map: {
+    "082": "Vodacom", "072": "Vodacom", "076": "Vodacom", "079": "Vodacom",
+    "083": "MTN South Africa", "073": "MTN South Africa", "078": "MTN South Africa",
+    "084": "Cell C", "074": "Cell C",
+    "081": "Telkom Mobile", "071": "Telkom Mobile",
+  }},
+  "GH": { len: 3, map: {
+    "054": "MTN Ghana", "055": "MTN Ghana", "059": "MTN Ghana",
+    "024": "MTN Ghana", "025": "MTN Ghana",
+    "050": "Vodafone Ghana", "020": "Vodafone Ghana", "030": "Vodafone Ghana",
+    "027": "AirtelTigo Ghana", "057": "AirtelTigo Ghana",
+    "026": "AirtelTigo Ghana", "056": "AirtelTigo Ghana",
+  }},
+  "TZ": { len: 3, map: {
+    "074": "Vodacom Tanzania", "075": "Vodacom Tanzania",
+    "071": "Tigo Tanzania", "065": "Tigo Tanzania",
+    "078": "Airtel Tanzania", "068": "Airtel Tanzania",
+    "062": "Halotel Tanzania", "069": "Halotel Tanzania",
+    "077": "TTCL Tanzania",
+  }},
+  "UG": { len: 3, map: {
+    "077": "MTN Uganda", "078": "MTN Uganda", "076": "MTN Uganda",
+    "070": "Airtel Uganda", "075": "Airtel Uganda",
+    "079": "Africell Uganda",
+  }},
 };
 
-function getKenyaCarrier(nationalNumber: string): string {
+function getCarrier(nationalNumber: string, regionCode: string): string {
+  const info = CARRIER_PREFIXES[regionCode];
+  if (!info) return "Unknown";
   const local = nationalNumber.startsWith("0") ? nationalNumber : `0${nationalNumber}`;
-  const prefix = local.slice(0, 4);
-  return KENYA_MOBILE_PREFIXES[prefix] ?? "Unknown";
+  const prefix = local.slice(0, info.len);
+  return info.map[prefix] ?? "Unknown";
 }
+
+const COUNTRY_TIMEZONES: Record<string, string[]> = {
+  "US": ["America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles"],
+  "GB": ["Europe/London"], "CA": ["America/Toronto", "America/Vancouver"],
+  "AU": ["Australia/Sydney", "Australia/Melbourne", "Australia/Perth"],
+  "DE": ["Europe/Berlin"], "FR": ["Europe/Paris"], "IT": ["Europe/Rome"],
+  "ES": ["Europe/Madrid"], "NL": ["Europe/Amsterdam"], "CH": ["Europe/Zurich"],
+  "SE": ["Europe/Stockholm"], "NO": ["Europe/Oslo"], "DK": ["Europe/Copenhagen"],
+  "FI": ["Europe/Helsinki"], "PL": ["Europe/Warsaw"], "RU": ["Europe/Moscow"],
+  "BR": ["America/Sao_Paulo"], "MX": ["America/Mexico_City"], "AR": ["America/Argentina/Buenos_Aires"],
+  "IN": ["Asia/Kolkata"], "CN": ["Asia/Shanghai"], "JP": ["Asia/Tokyo"],
+  "KR": ["Asia/Seoul"], "SG": ["Asia/Singapore"], "HK": ["Asia/Hong_Kong"],
+  "TH": ["Asia/Bangkok"], "MY": ["Asia/Kuala_Lumpur"], "ID": ["Asia/Jakarta"],
+  "PH": ["Asia/Manila"], "VN": ["Asia/Ho_Chi_Minh"],
+  "ZA": ["Africa/Johannesburg"], "NG": ["Africa/Lagos"], "KE": ["Africa/Nairobi"],
+  "GH": ["Africa/Accra"], "EG": ["Africa/Cairo"], "MA": ["Africa/Casablanca"],
+  "TZ": ["Africa/Dar_es_Salaam"], "UG": ["Africa/Kampala"], "ET": ["Africa/Addis_Ababa"],
+  "RW": ["Africa/Kigali"], "SN": ["Africa/Dakar"], "CI": ["Africa/Abidjan"],
+  "CM": ["Africa/Douala"], "AO": ["Africa/Luanda"], "MZ": ["Africa/Maputo"],
+  "AE": ["Asia/Dubai"], "SA": ["Asia/Riyadh"], "TR": ["Europe/Istanbul"],
+  "PK": ["Asia/Karachi"], "BD": ["Asia/Dhaka"],
+  "NZ": ["Pacific/Auckland"], "IE": ["Europe/Dublin"], "PT": ["Europe/Lisbon"],
+  "IL": ["Asia/Jerusalem"],
+};
 
 const COUNTRY_NAMES: Record<string, string> = {
   "US": "United States", "GB": "United Kingdom", "CA": "Canada",
@@ -345,7 +407,8 @@ async function gatherPhone(phoneInput: string): Promise<Record<string, unknown>>
   if (lineType === "Mobile") notes.push("Mobile number — carrier may provide approximate location info.");
   if (lineType === "Toll Free") notes.push("Toll-free number — typically a business line.");
 
-  const carrier = regionCode === "KE" ? getKenyaCarrier(String(parsed.nationalNumber)) : "Unknown";
+  const carrier = getCarrier(String(parsed.nationalNumber), regionCode);
+  const timezones: string[] = COUNTRY_TIMEZONES[regionCode] ?? [];
 
   const searchLinks: Record<string, string> = {
     "Google (exact)": `https://www.google.com/search?q="${e164}"`,
@@ -374,7 +437,7 @@ async function gatherPhone(phoneInput: string): Promise<Record<string, unknown>>
     location: countryName || "Unknown",
     carrier,
     line_type: lineType,
-    timezones: [],
+    timezones,
     formats,
     notes,
     search_links: searchLinks,
@@ -448,14 +511,102 @@ async function checkGithub(usernames: string[]): Promise<Record<string, unknown>
   );
 }
 
+async function checkReddit(usernames: string[]): Promise<Record<string, unknown>[]> {
+  const settled = await Promise.allSettled(
+    usernames.slice(0, 6).map(async (username) => {
+      const resp = await fetch(`https://www.reddit.com/user/${username}/about.json`, {
+        headers: { "User-Agent": "OSINT-Report-Tool/1.0" },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (resp.status === 200) {
+        const d = (await resp.json()) as { data?: Record<string, unknown> };
+        const data = d.data ?? {};
+        if (!data["name"]) return { username, found: false };
+        return {
+          username, found: true,
+          karma: ((data["link_karma"] as number) ?? 0) + ((data["comment_karma"] as number) ?? 0),
+          link_karma: data["link_karma"],
+          comment_karma: data["comment_karma"],
+          created_utc: data["created_utc"],
+          is_gold: data["is_gold"],
+          url: `https://reddit.com/u/${username}`,
+        };
+      }
+      return { username, found: false };
+    })
+  );
+  return settled.map((r) =>
+    r.status === "fulfilled" ? r.value : { username: "unknown", found: null, error: "Request failed" }
+  );
+}
+
+async function checkKeybase(usernames: string[]): Promise<Record<string, unknown>[]> {
+  const settled = await Promise.allSettled(
+    usernames.slice(0, 6).map(async (username) => {
+      const resp = await fetch(
+        `https://keybase.io/_/api/1.0/user/lookup.json?usernames=${username}&fields=basics,profile`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (resp.status === 200) {
+        const d = (await resp.json()) as { them?: Array<Record<string, unknown> | null> };
+        const them = d.them?.[0];
+        if (them && (them["id"] || them["basics"])) {
+          const basics = them["basics"] as Record<string, unknown> | undefined;
+          const profile = them["profile"] as Record<string, unknown> | undefined;
+          return {
+            username, found: true,
+            display_name: basics?.["username_cased"] ?? username,
+            full_name: profile?.["full_name"],
+            bio: profile?.["bio"],
+            location: profile?.["location"],
+            url: `https://keybase.io/${username}`,
+          };
+        }
+      }
+      return { username, found: false };
+    })
+  );
+  return settled.map((r) =>
+    r.status === "fulfilled" ? r.value : { username: "unknown", found: null, error: "Request failed" }
+  );
+}
+
+async function searchWikipedia(query: string): Promise<Record<string, unknown>> {
+  try {
+    const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=3&format=json&origin=*`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!resp.ok) return { results: [], error: `Wikipedia returned ${resp.status}` };
+    const d = (await resp.json()) as { query?: { search?: Array<Record<string, unknown>> } };
+    const results = (d.query?.search ?? []).map((r) => ({
+      title: r["title"],
+      snippet: String(r["snippet"] ?? "").replace(/<[^>]+>/g, "").slice(0, 200),
+      pageid: r["pageid"],
+      url: `https://en.wikipedia.org/wiki/${encodeURIComponent(String(r["title"] ?? "").replace(/ /g, "_"))}`,
+    }));
+    return { results };
+  } catch (err: unknown) {
+    return { results: [], error: String(err) };
+  }
+}
+
 async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
   const name = nameInput.trim();
   if (!name || name.length < 2) return { error: "Name must be at least 2 characters", valid: false };
 
   const parts = parseName(name);
   const usernames = generateUsernames(parts);
-  const githubResults = await checkGithub(usernames);
+
+  const [githubResults, redditResults, keybaseResults, wikipedia] = await Promise.all([
+    checkGithub(usernames),
+    checkReddit(usernames),
+    checkKeybase(usernames),
+    searchWikipedia(name),
+  ]);
+
   const foundCount = githubResults.filter((r) => r["found"] === true).length;
+  const redditFoundCount = redditResults.filter((r) => r["found"] === true).length;
+  const keybaseFoundCount = keybaseResults.filter((r) => r["found"] === true).length;
+  const wikiHits = ((wikipedia["results"] as unknown[]) ?? []).length;
 
   const enc = encodeURIComponent;
   const encodedFull = enc(`"${name}"`);
@@ -484,8 +635,20 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
     valid: true,
     name_parts: parts,
     possible_usernames: usernames,
+    key_findings: {
+      github_found: foundCount,
+      reddit_found: redditFoundCount,
+      keybase_found: keybaseFoundCount,
+      wikipedia_hits: wikiHits,
+      usernames_checked: usernames.length,
+    },
     github_profiles: githubResults,
     github_found_count: foundCount,
+    reddit_profiles: redditResults,
+    reddit_found_count: redditFoundCount,
+    keybase_profiles: keybaseResults,
+    keybase_found_count: keybaseFoundCount,
+    wikipedia,
     search_links: {
       "Google (full name)": `https://www.google.com/search?q=${encodedFull}`,
       "Google News": `https://www.google.com/search?q=${encodedFull}&tbm=nws`,

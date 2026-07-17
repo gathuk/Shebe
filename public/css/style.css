@@ -495,6 +495,23 @@ body {
 .icon-teal   { background: rgba(20,184,166,0.15); color: #2dd4bf; }
 .icon-orange { background: rgba(249,115,22,0.15); color: #fb923c; }
 
+.finding-list { display: flex; flex-direction: column; }
+.finding-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text3);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.finding-row:last-child { border-bottom: none; }
+.finding-row.found { color: var(--text); font-weight: 500; }
+.finding-row.found i { color: var(--green); }
+.finding-row i { font-size: 15px; width: 18px; text-align: center; flex-shrink: 0; }
+
+.wiki-link { align-items: flex-start !important; }
+
 .card-title {
   font-size: 14px;
   font-weight: 600;

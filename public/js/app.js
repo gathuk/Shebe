@@ -441,6 +441,27 @@ function renderName(d, targetEl, grid) {
       <div class="target-tags">${tags}</div>
     </div>`;
 
+  // Key findings summary
+  const kf = d.key_findings || {};
+  if (Object.keys(kf).length) {
+    const items = [
+      kf.github_found > 0
+        ? `<div class="finding-row found"><i class="fa-brands fa-github"></i> ${kf.github_found} GitHub profile${kf.github_found !== 1 ? 's' : ''} matched</div>`
+        : `<div class="finding-row"><i class="fa-brands fa-github"></i> No GitHub profiles found</div>`,
+      kf.reddit_found > 0
+        ? `<div class="finding-row found"><i class="fa-brands fa-reddit"></i> ${kf.reddit_found} Reddit account${kf.reddit_found !== 1 ? 's' : ''} found</div>`
+        : `<div class="finding-row"><i class="fa-brands fa-reddit"></i> No Reddit accounts found</div>`,
+      kf.keybase_found > 0
+        ? `<div class="finding-row found"><i class="fa-solid fa-key"></i> ${kf.keybase_found} Keybase profile${kf.keybase_found !== 1 ? 's' : ''} found</div>`
+        : `<div class="finding-row"><i class="fa-solid fa-key"></i> No Keybase profiles found</div>`,
+      kf.wikipedia_hits > 0
+        ? `<div class="finding-row found"><i class="fa-brands fa-wikipedia-w"></i> ${kf.wikipedia_hits} Wikipedia result${kf.wikipedia_hits !== 1 ? 's' : ''}</div>`
+        : `<div class="finding-row"><i class="fa-brands fa-wikipedia-w"></i> Not found on Wikipedia</div>`,
+      `<div class="finding-row"><i class="fa-solid fa-at"></i> ${kf.usernames_checked} username patterns checked across platforms</div>`,
+    ].join('');
+    grid.appendChild(card('Intelligence Summary', 'fa-bullseye', 'icon-orange', `<div class="finding-list">${items}</div>`));
+  }
+
   // Name breakdown
   const nameRows = [
     row('Full Name', parts.full),
@@ -475,6 +496,56 @@ function renderName(d, targetEl, grid) {
       </a>`).join('');
   }
   grid.appendChild(card(`GitHub Profiles (${ghProfiles.length} found)`, 'fa-brands fa-github', 'icon-green', ghContent));
+
+  // Reddit profiles
+  const rdProfiles = (d.reddit_profiles || []).filter(p => p.found);
+  let rdContent = rdProfiles.length === 0
+    ? `<div class="no-data"><i class="fa-brands fa-reddit"></i>No matching Reddit accounts found for generated usernames</div>`
+    : rdProfiles.map(p => `
+      <a href="${esc(p.url)}" target="_blank" rel="noopener" class="github-profile">
+        <div class="target-avatar-placeholder" style="width:40px;height:40px;font-size:18px;flex-shrink:0"><i class="fa-brands fa-reddit"></i></div>
+        <div class="github-info">
+          <div class="github-username">u/${esc(p.username)}</div>
+          <div class="github-stats">
+            ${p.karma != null ? `<span class="github-stat"><i class="fa-solid fa-arrow-up"></i> ${Number(p.karma).toLocaleString()} karma</span>` : ''}
+            ${p.is_gold ? `<span class="github-stat"><i class="fa-solid fa-star"></i> Gold</span>` : ''}
+          </div>
+        </div>
+        <i class="fa-solid fa-arrow-up-right-from-square" style="color:var(--text3);font-size:12px;margin-left:auto"></i>
+      </a>`).join('');
+  grid.appendChild(card(`Reddit Accounts (${rdProfiles.length} found)`, 'fa-brands fa-reddit', 'icon-red', rdContent));
+
+  // Keybase profiles
+  const kbProfiles = (d.keybase_profiles || []).filter(p => p.found);
+  if (kbProfiles.length > 0) {
+    const kbHtml = kbProfiles.map(p => `
+      <a href="${esc(p.url)}" target="_blank" rel="noopener" class="github-profile">
+        <div class="target-avatar-placeholder" style="width:40px;height:40px;font-size:18px;flex-shrink:0"><i class="fa-solid fa-key"></i></div>
+        <div class="github-info">
+          <div class="github-username">${esc(p.display_name || p.username)}</div>
+          ${p.full_name ? `<div class="github-name">${esc(p.full_name)}</div>` : ''}
+          ${p.bio  ? `<div class="github-bio">${esc(p.bio)}</div>` : ''}
+          ${p.location ? `<div class="github-bio"><i class="fa-solid fa-location-dot"></i> ${esc(p.location)}</div>` : ''}
+        </div>
+        <i class="fa-solid fa-arrow-up-right-from-square" style="color:var(--text3);font-size:12px;margin-left:auto"></i>
+      </a>`).join('');
+    grid.appendChild(card(`Keybase Profiles (${kbProfiles.length} found)`, 'fa-solid fa-key', 'icon-purple', kbHtml));
+  }
+
+  // Wikipedia results
+  const wikiResults = d.wikipedia?.results || [];
+  if (wikiResults.length > 0) {
+    const wikiHtml = `<div class="link-list">${wikiResults.map(r => `
+      <a href="${esc(r.url)}" target="_blank" rel="noopener" class="link-item wiki-link">
+        <i class="fa-brands fa-wikipedia-w"></i>
+        <div style="flex:1;min-width:0">
+          <div class="link-label" style="font-weight:600">${esc(r.title)}</div>
+          ${r.snippet ? `<div style="font-size:12px;color:var(--text2);margin-top:2px">${esc(r.snippet)}…</div>` : ''}
+        </div>
+        <i class="fa-solid fa-arrow-up-right-from-square link-ext" style="flex-shrink:0"></i>
+      </a>`).join('')}</div>`;
+    grid.appendChild(card('Wikipedia Results', 'fa-brands fa-wikipedia-w', 'icon-blue', wikiHtml));
+  }
 
   // Possible usernames
   const usernames = d.possible_usernames || [];
@@ -630,6 +701,7 @@ function platformIcon(label) {
   if (l.includes('tumblr'))    return 'fa-brands fa-tumblr';
   if (l.includes('medium'))    return 'fa-brands fa-medium';
   if (l.includes('keybase'))   return 'fa-solid fa-key';
+  if (l.includes('wikipedia')) return 'fa-brands fa-wikipedia-w';
   if (l.includes('whatsapp'))  return 'fa-brands fa-whatsapp';
   if (l.includes('telegram'))  return 'fa-brands fa-telegram';
   if (l.includes('signal'))    return 'fa-solid fa-comment-dots';
