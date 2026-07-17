@@ -369,8 +369,109 @@ function numberTypeToString(type: string | undefined): string {
   return map[type ?? ""] ?? "Unknown";
 }
 
+// Handle partial/wildcard phone numbers where unknown digits are represented as *
+async function gatherPartialPhone(rawInput: string): Promise<Record<string, unknown>> {
+  const input = rawInput.trim();
+
+  // Replace wildcards with 0 so libphonenumber can detect country/format
+  const forParsing = input.replace(/\*/g, "0");
+  let parsed = null;
+  for (const attempt of [forParsing, "+" + forParsing.replace(/^\+/, ""), forParsing.replace(/[\s\-()\+]/g, "")]) {
+    try { const p = parsePhoneNumber(attempt); if (p) { parsed = p; break; } } catch {}
+  }
+
+  if (!parsed) {
+    return {
+      error: "Could not determine country from partial number. Include the country code prefix (e.g. +254 0712 *** 456 for Kenya, +234 0812 *** 456 for Nigeria).",
+      valid: false, partial: true, target: input,
+    };
+  }
+
+  const regionCode = parsed.country ?? "";
+  const countryCallingCode = String(parsed.countryCallingCode);
+  const countryName = COUNTRY_NAMES[regionCode] ?? regionCode;
+  const timezones = COUNTRY_TIMEZONES[regionCode] ?? [];
+
+  // Extract national pattern keeping * wildcards
+  const cleanOriginal = input.replace(/[\s\-()\+]/g, ""); // strip formatting, keep *
+  const withoutCC = cleanOriginal.startsWith(countryCallingCode)
+    ? cleanOriginal.slice(countryCallingCode.length)
+    : cleanOriginal;
+
+  // Carrier detection from the known prefix digits
+  let carrierGuess = "Unknown";
+  const info = CARRIER_PREFIXES[regionCode];
+  if (info && withoutCC) {
+    const local = withoutCC.startsWith("0") ? withoutCC : `0${withoutCC}`;
+    const firstWild = local.indexOf("*");
+    const knownPrefix = firstWild === -1 ? local : local.slice(0, firstWild);
+
+    if (knownPrefix.length >= info.len) {
+      carrierGuess = info.map[knownPrefix.slice(0, info.len)] ?? "Unknown";
+    } else if (knownPrefix.length > 0) {
+      const matches = [...new Set(
+        Object.entries(info.map)
+          .filter(([k]) => k.startsWith(knownPrefix))
+          .map(([, v]) => v)
+      )];
+      carrierGuess = matches.length === 1
+        ? matches[0]
+        : matches.length > 1 ? `Possibly: ${matches.join(" / ")}` : "Unknown";
+    }
+  }
+
+  const wildcardCount = (input.match(/\*/g) ?? []).length;
+  const knownDigitsOnly = input.replace(/[^+\d]/g, "");
+  const enc = encodeURIComponent;
+
+  const searchLinks: Record<string, string> = {
+    "Google (number pattern)": `https://www.google.com/search?q=${enc(input)}`,
+    "Google (known digits only)": `https://www.google.com/search?q="${knownDigitsOnly}"`,
+    "Bing": `https://www.bing.com/search?q=${enc(input)}`,
+    "Truecaller (known digits)": `https://www.truecaller.com/search/${regionCode.toLowerCase()}/${withoutCC.replace(/\*/g, "")}`,
+    "SpyDialer (known digits)": `https://www.spydialer.com/default.aspx?ph=${withoutCC.replace(/\*/g, "")}`,
+  };
+
+  if (["KE", "NG", "ZA", "GH", "UG", "TZ"].includes(regionCode)) {
+    searchLinks["Google Dork (M-Pesa/Paybill)"] = `https://www.google.com/search?q=${enc(input)}+mpesa+OR+paybill+OR+till`;
+    searchLinks["Jiji (classifieds, known digits)"] = `https://jiji.co.ke/search?query=${enc(withoutCC.replace(/\*/g, ""))}`;
+  }
+
+  const notes: string[] = [
+    `Partial/wildcard search — ${wildcardCount} unknown digit${wildcardCount !== 1 ? "s" : ""} (replaced by * in input).`,
+    "Country and carrier derived from the known prefix digits.",
+    wildcardCount > 4
+      ? "Many unknown digits — search links use only the known portion and may return broad results."
+      : "Search links use known digits; a full number is needed for exact reverse-lookup.",
+  ];
+
+  return {
+    target: input,
+    partial: true,
+    valid: false,
+    possible: true,
+    country_code: `+${countryCallingCode}`,
+    region_code: regionCode,
+    country_name: countryName,
+    national_number: withoutCC,
+    location: countryName || "Unknown",
+    carrier: carrierGuess,
+    line_type: "Unknown (partial number)",
+    timezones,
+    formats: {
+      "Input Pattern": input,
+      "Known Digits": knownDigitsOnly,
+      "National Pattern": withoutCC,
+    },
+    notes,
+    search_links: searchLinks,
+  };
+}
+
 async function gatherPhone(phoneInput: string): Promise<Record<string, unknown>> {
   const phone = phoneInput.trim();
+  // Delegate to partial handler when wildcards are present
+  if (phone.includes("*")) return gatherPartialPhone(phone);
   let parsed = null;
   for (const attempt of [phone, "+" + phone.replace(/^\+/, ""), phone.replace(/[\s\-()\+]/g, "")]) {
     try {

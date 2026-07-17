@@ -436,6 +436,7 @@ body {
 
 .status-pill.valid { color: var(--green); background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); }
 .status-pill.invalid { color: var(--red); background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.25); }
+.status-pill.partial { color: var(--yellow); background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25); }
 
 /* ── Report Grid ───────────────────────────────────────────── */
 .report-grid {

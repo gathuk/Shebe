@@ -7,13 +7,13 @@ let currentType = 'name';
 const PLACEHOLDER = {
   name:  'Enter full name (e.g. Jane Smith)',
   email: 'Enter email address (e.g. jane@example.com)',
-  phone: 'Enter phone number in international format (e.g. +14155552671)',
+  phone: 'e.g. +254 0712 345 678 or +254 0712 *** 456 (use * for unknown digits)',
 };
 
 const HINT = {
   name:  'Use the person\'s full name for best results. First and last name required.',
   email: 'Enter the full email address including domain.',
-  phone: 'Use international format with country code (e.g. +1 for US, +44 for UK).',
+  phone: 'Use international format with country code. Replace unknown digits with * (e.g. +254 0712 *** 456 for a partial Kenyan number).',
   hybrid: 'Combine any of name, email, and phone — the more you provide, the more accurate the cross-referenced results.',
 };
 
@@ -346,22 +346,26 @@ function renderEmail(d, targetEl, grid) {
 function renderPhone(d, targetEl, grid) {
   const avatarHtml = `<div class="target-avatar-placeholder"><i class="fa-solid fa-phone"></i></div>`;
   const tags = [
-    d.valid  ? tag('Valid Number', 'green') : tag('Invalid Number', 'red'),
-    d.line_type ? tag(d.line_type, 'blue') : '',
+    d.partial ? tag('Partial Number', 'yellow') : (d.valid ? tag('Valid Number', 'green') : tag('Invalid Number', 'red')),
+    d.line_type && d.line_type !== 'Unknown (partial number)' ? tag(d.line_type, 'blue') : '',
     d.country_name ? tag(d.country_name, 'purple') : '',
   ].filter(Boolean).join('');
+
+  const statusPillClass = d.partial ? 'partial' : (d.valid ? 'valid' : 'invalid');
+  const statusIcon = d.partial ? 'fa-circle-question' : (d.valid ? 'fa-circle-check' : 'fa-circle-xmark');
+  const statusLabel = d.partial ? 'Partial' : (d.valid ? 'Valid' : 'Invalid');
 
   targetEl.innerHTML = `
     ${avatarHtml}
     <div class="target-info">
-      <div class="target-label">Phone Number</div>
+      <div class="target-label">Phone Number${d.partial ? ' — Wildcard Search' : ''}</div>
       <div class="target-name">${esc(d.formats?.International || d.target)}</div>
       <div class="target-tags">${tags}</div>
     </div>
     <div class="target-status">
-      <div class="status-pill ${d.valid ? 'valid' : 'invalid'}">
-        <i class="fa-solid fa-${d.valid ? 'circle-check' : 'circle-xmark'}"></i>
-        ${d.valid ? 'Valid' : 'Invalid'}
+      <div class="status-pill ${statusPillClass}">
+        <i class="fa-solid ${statusIcon}"></i>
+        ${statusLabel}
       </div>
     </div>`;
 
@@ -372,15 +376,17 @@ function renderPhone(d, targetEl, grid) {
 
   // Number Details
   const detailRows = [
+    d.partial ? row('Number Pattern', d.formats?.['Input Pattern'] || d.target) : '',
+    d.partial ? row('Known Digits', d.formats?.['Known Digits'] || '') : '',
     row('Country', `${d.country_name || ''} (${d.region_code || ''})`),
     row('Dial Code', d.country_code),
-    row('National #', d.national_number),
+    !d.partial ? row('National #', d.national_number) : row('National Pattern', d.formats?.['National Pattern'] || d.national_number),
     row('Location', d.location),
     row('Carrier', d.carrier),
-    row('Line Type', d.line_type),
+    !d.partial ? row('Line Type', d.line_type) : '',
     d.timezones?.length ? row('Timezone(s)', d.timezones.join(', ')) : '',
-    row('Valid', d.valid ? '✓ Yes' : '✗ No'),
-    row('Possible', d.possible ? '✓ Yes' : '✗ No'),
+    !d.partial ? row('Valid', d.valid ? '✓ Yes' : '✗ No') : '',
+    !d.partial ? (d.possible != null ? row('Possible', d.possible ? '✓ Yes' : '✗ No') : '') : '',
   ].filter(Boolean).join('');
   grid.appendChild(card('Number Details', 'fa-circle-info', 'icon-blue', detailRows));
 
