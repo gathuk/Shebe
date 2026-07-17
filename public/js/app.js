@@ -454,6 +454,12 @@ function renderName(d, targetEl, grid) {
       kf.keybase_found > 0
         ? `<div class="finding-row found"><i class="fa-solid fa-key"></i> ${kf.keybase_found} Keybase profile${kf.keybase_found !== 1 ? 's' : ''} found</div>`
         : `<div class="finding-row"><i class="fa-solid fa-key"></i> No Keybase profiles found</div>`,
+      kf.devto_found > 0
+        ? `<div class="finding-row found"><i class="fa-brands fa-dev"></i> ${kf.devto_found} DEV.to profile${kf.devto_found !== 1 ? 's' : ''} found</div>`
+        : `<div class="finding-row"><i class="fa-brands fa-dev"></i> No DEV.to profiles found</div>`,
+      kf.mastodon_found > 0
+        ? `<div class="finding-row found"><i class="fa-brands fa-mastodon"></i> ${kf.mastodon_found} Mastodon account${kf.mastodon_found !== 1 ? 's' : ''} found</div>`
+        : `<div class="finding-row"><i class="fa-brands fa-mastodon"></i> No Mastodon accounts found</div>`,
       kf.wikipedia_hits > 0
         ? `<div class="finding-row found"><i class="fa-brands fa-wikipedia-w"></i> ${kf.wikipedia_hits} Wikipedia result${kf.wikipedia_hits !== 1 ? 's' : ''}</div>`
         : `<div class="finding-row"><i class="fa-brands fa-wikipedia-w"></i> Not found on Wikipedia</div>`,
@@ -531,6 +537,51 @@ function renderName(d, targetEl, grid) {
       </a>`).join('');
     grid.appendChild(card(`Keybase Profiles (${kbProfiles.length} found)`, 'fa-solid fa-key', 'icon-purple', kbHtml));
   }
+
+  // DEV.to profiles
+  const devtoProfiles = (d.devto_profiles || []).filter(p => p.found);
+  let devtoContent = devtoProfiles.length === 0
+    ? `<div class="no-data"><i class="fa-brands fa-dev"></i>No matching DEV.to profiles found for generated usernames</div>`
+    : devtoProfiles.map(p => `
+      <a href="${esc(p.url)}" target="_blank" rel="noopener" class="github-profile">
+        ${p.profile_image
+          ? `<img src="${esc(p.profile_image)}" class="github-avatar" alt="${esc(p.username)}" />`
+          : `<div class="target-avatar-placeholder" style="width:40px;height:40px;font-size:18px;flex-shrink:0"><i class="fa-brands fa-dev"></i></div>`}
+        <div class="github-info">
+          <div class="github-username">${esc(p.name || p.username)}</div>
+          ${p.summary ? `<div class="github-bio">${esc(p.summary)}</div>` : ''}
+          ${p.location ? `<div class="github-bio"><i class="fa-solid fa-location-dot"></i> ${esc(p.location)}</div>` : ''}
+          <div class="github-stats">
+            ${p.github_username ? `<span class="github-stat"><i class="fa-brands fa-github"></i> ${esc(p.github_username)}</span>` : ''}
+            ${p.twitter_username ? `<span class="github-stat"><i class="fa-brands fa-x-twitter"></i> @${esc(p.twitter_username)}</span>` : ''}
+            ${p.website_url ? `<span class="github-stat"><i class="fa-solid fa-link"></i> ${esc(p.website_url)}</span>` : ''}
+          </div>
+        </div>
+        <i class="fa-solid fa-arrow-up-right-from-square" style="color:var(--text3);font-size:12px;margin-left:auto"></i>
+      </a>`).join('');
+  grid.appendChild(card(`DEV.to Profiles (${devtoProfiles.length} found)`, 'fa-brands fa-dev', 'icon-purple', devtoContent));
+
+  // Mastodon accounts
+  const mastodonAccounts = (d.mastodon_accounts || []).filter(a => a.found);
+  let mastodonContent = mastodonAccounts.length === 0
+    ? `<div class="no-data"><i class="fa-brands fa-mastodon"></i>No Mastodon accounts found matching the search query</div>`
+    : mastodonAccounts.map(a => `
+      <a href="${esc(a.url)}" target="_blank" rel="noopener" class="github-profile">
+        ${a.avatar
+          ? `<img src="${esc(a.avatar)}" class="github-avatar" alt="${esc(a.username)}" />`
+          : `<div class="target-avatar-placeholder" style="width:40px;height:40px;font-size:18px;flex-shrink:0"><i class="fa-brands fa-mastodon"></i></div>`}
+        <div class="github-info">
+          <div class="github-username">@${esc(a.username)}</div>
+          ${a.display_name ? `<div class="github-name">${esc(a.display_name)}</div>` : ''}
+          ${a.bio ? `<div class="github-bio">${esc(a.bio)}</div>` : ''}
+          <div class="github-stats">
+            ${a.followers != null ? `<span class="github-stat"><i class="fa-solid fa-users"></i> ${Number(a.followers).toLocaleString()} followers</span>` : ''}
+            ${a.statuses != null ? `<span class="github-stat"><i class="fa-solid fa-comment"></i> ${Number(a.statuses).toLocaleString()} posts</span>` : ''}
+          </div>
+        </div>
+        <i class="fa-solid fa-arrow-up-right-from-square" style="color:var(--text3);font-size:12px;margin-left:auto"></i>
+      </a>`).join('');
+  grid.appendChild(card(`Mastodon Accounts (${mastodonAccounts.length} found)`, 'fa-brands fa-mastodon', 'icon-teal', mastodonContent));
 
   // Wikipedia results
   const wikiResults = d.wikipedia?.results || [];
@@ -702,6 +753,8 @@ function platformIcon(label) {
   if (l.includes('medium'))    return 'fa-brands fa-medium';
   if (l.includes('keybase'))   return 'fa-solid fa-key';
   if (l.includes('wikipedia')) return 'fa-brands fa-wikipedia-w';
+  if (l.includes('dev.to') || l.includes('devto')) return 'fa-brands fa-dev';
+  if (l.includes('mastodon'))  return 'fa-brands fa-mastodon';
   if (l.includes('whatsapp'))  return 'fa-brands fa-whatsapp';
   if (l.includes('telegram'))  return 'fa-brands fa-telegram';
   if (l.includes('signal'))    return 'fa-solid fa-comment-dots';

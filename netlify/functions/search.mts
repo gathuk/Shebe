@@ -571,6 +571,61 @@ async function checkKeybase(usernames: string[]): Promise<Record<string, unknown
   );
 }
 
+async function checkDevTo(usernames: string[]): Promise<Record<string, unknown>[]> {
+  const settled = await Promise.allSettled(
+    usernames.slice(0, 6).map(async (username) => {
+      const resp = await fetch(`https://dev.to/api/users/by_username?url=${username}`, {
+        headers: { "User-Agent": "OSINT-Report-Tool/1.0" },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (resp.status === 200) {
+        const d = (await resp.json()) as Record<string, unknown>;
+        return {
+          username, found: true,
+          name: d["name"],
+          summary: d["summary"],
+          location: d["location"],
+          twitter_username: d["twitter_username"],
+          github_username: d["github_username"],
+          website_url: d["website_url"],
+          profile_image: d["profile_image_90"],
+          url: `https://dev.to/${username}`,
+        };
+      }
+      return { username, found: false };
+    })
+  );
+  return settled.map((r) =>
+    r.status === "fulfilled" ? r.value : { username: "unknown", found: null, error: "Request failed" }
+  );
+}
+
+async function searchMastodon(username: string): Promise<Record<string, unknown>[]> {
+  try {
+    const resp = await fetch(
+      `https://mastodon.social/api/v1/accounts/search?q=${encodeURIComponent(username)}&limit=5&resolve=false`,
+      {
+        headers: { "User-Agent": "OSINT-Report-Tool/1.0" },
+        signal: AbortSignal.timeout(6000),
+      }
+    );
+    if (!resp.ok) return [];
+    const accounts = (await resp.json()) as Array<Record<string, unknown>>;
+    return accounts.map((a) => ({
+      username: a["username"],
+      display_name: a["display_name"],
+      bio: String(a["note"] ?? "").replace(/<[^>]+>/g, "").slice(0, 200),
+      url: a["url"],
+      followers: a["followers_count"],
+      statuses: a["statuses_count"],
+      avatar: a["avatar"],
+      found: true,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 async function searchWikipedia(query: string): Promise<Record<string, unknown>> {
   try {
     const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=3&format=json&origin=*`;
@@ -596,16 +651,20 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
   const parts = parseName(name);
   const usernames = generateUsernames(parts);
 
-  const [githubResults, redditResults, keybaseResults, wikipedia] = await Promise.all([
+  const [githubResults, redditResults, keybaseResults, devtoResults, mastodonResults, wikipedia] = await Promise.all([
     checkGithub(usernames),
     checkReddit(usernames),
     checkKeybase(usernames),
+    checkDevTo(usernames),
+    searchMastodon(parts.first || name),
     searchWikipedia(name),
   ]);
 
   const foundCount = githubResults.filter((r) => r["found"] === true).length;
   const redditFoundCount = redditResults.filter((r) => r["found"] === true).length;
   const keybaseFoundCount = keybaseResults.filter((r) => r["found"] === true).length;
+  const devtoFoundCount = devtoResults.filter((r) => r["found"] === true).length;
+  const mastodonFoundCount = mastodonResults.length;
   const wikiHits = ((wikipedia["results"] as unknown[]) ?? []).length;
 
   const enc = encodeURIComponent;
@@ -625,6 +684,8 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
       "Pinterest": `https://pinterest.com/${un}`,
       "Tumblr": `https://${un}.tumblr.com`,
       "Keybase": `https://keybase.io/${un}`,
+      "DEV.to": `https://dev.to/${un}`,
+      "Mastodon": `https://mastodon.social/@${un}`,
       "Twitch": `https://twitch.tv/${un}`,
       "Medium": `https://medium.com/@${un}`,
     };
@@ -639,6 +700,8 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
       github_found: foundCount,
       reddit_found: redditFoundCount,
       keybase_found: keybaseFoundCount,
+      devto_found: devtoFoundCount,
+      mastodon_found: mastodonFoundCount,
       wikipedia_hits: wikiHits,
       usernames_checked: usernames.length,
     },
@@ -648,6 +711,10 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
     reddit_found_count: redditFoundCount,
     keybase_profiles: keybaseResults,
     keybase_found_count: keybaseFoundCount,
+    devto_profiles: devtoResults,
+    devto_found_count: devtoFoundCount,
+    mastodon_accounts: mastodonResults,
+    mastodon_found_count: mastodonFoundCount,
     wikipedia,
     search_links: {
       "Google (full name)": `https://www.google.com/search?q=${encodedFull}`,
@@ -667,6 +734,12 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
       "BrighterMonday (East Africa jobs/CVs)": `https://www.brightermonday.co.ke/jobs?q=${encodedName}`,
       "Jiji (Africa marketplace)": `https://jiji.co.ke/search?query=${encodedName}`,
       "M-Changa (Kenya fundraising)": `https://www.mchanga.africa/search?q=${encodedName}`,
+      "Yellow Pages Kenya": `https://yellowpages.co.ke/search?q=${encodedName}`,
+      "PigiaMe Kenya (classifieds)": `https://www.pigiame.co.ke/search?q=${encodedName}`,
+      "Kenya BRS (business registry)": `https://efts.ecitizen.go.ke/index.php?r=registry/search&query=${encodedName}`,
+      "CAC Nigeria (company search)": `https://search.cac.gov.ng/home`,
+      "CIPC South Africa (company search)": `https://iportal.cipc.co.za/`,
+      "Kenya Judiciary (court records)": `https://www.judiciary.go.ke/portal/`,
     },
     google_dorks: {
       "Full name (exact)": `https://www.google.com/search?q=${encodedFull}`,
@@ -680,7 +753,11 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
       "Phone numbers": `https://www.google.com/search?q=${encodedFull}+phone+OR+tel+OR+mobile`,
       "Social (all)": `https://www.google.com/search?q=${encodedFull}+site:linkedin.com+OR+site:facebook.com+OR+site:twitter.com+OR+site:instagram.com`,
       "Kenyan news (Tuko, Standard, Nation, Citizen)": `https://www.google.com/search?q=${encodedFull}+site:tuko.co.ke+OR+site:standardmedia.co.ke+OR+site:nation.africa+OR+site:citizen.digital`,
+      "Kenya BRS business registry": `https://www.google.com/search?q=${enc(`site:efts.ecitizen.go.ke ${name}`)}`,
+      "CAC Nigeria company search": `https://www.google.com/search?q=${enc(`site:search.cac.gov.ng ${name}`)}`,
+      "Kenya Judiciary court records": `https://www.google.com/search?q=${enc(`site:judiciary.go.ke ${name}`)}`,
       "African business records": `https://www.google.com/search?q=${encodedFull}+site:opencorporates.com+OR+site:brs.go.ke`,
+      "Yellow Pages & directories": `https://www.google.com/search?q=${encodedFull}+site:yellowpages.co.ke+OR+site:pigiame.co.ke`,
     },
     username_profile_links: usernameLinks,
   };
