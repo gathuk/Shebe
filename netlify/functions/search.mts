@@ -166,22 +166,16 @@ async function getMxRecords(domain: string): Promise<Record<string, unknown>> {
 async function getTxtRecords(
   domain: string
 ): Promise<{ spf: string | null; dmarc: string | null }> {
-  let spf: string | null = null;
-  let dmarc: string | null = null;
-  try {
-    const records = await dnsPromises.resolveTxt(domain);
-    for (const record of records) {
-      const rdata = record.join("");
-      if (rdata.startsWith("v=spf1")) spf = rdata;
-    }
-  } catch {}
-  try {
-    const dmarcRecords = await dnsPromises.resolveTxt(`_dmarc.${domain}`);
-    for (const record of dmarcRecords) {
-      const rdata = record.join("");
-      if (rdata.includes("v=DMARC1")) dmarc = rdata;
-    }
-  } catch {}
+  const [spfRecords, dmarcRecords] = await Promise.allSettled([
+    dnsPromises.resolveTxt(domain),
+    dnsPromises.resolveTxt(`_dmarc.${domain}`),
+  ]);
+  const spf = spfRecords.status === "fulfilled"
+    ? (spfRecords.value.map(r => r.join("")).find(r => r.startsWith("v=spf1")) ?? null)
+    : null;
+  const dmarc = dmarcRecords.status === "fulfilled"
+    ? (dmarcRecords.value.map(r => r.join("")).find(r => r.includes("v=DMARC1")) ?? null)
+    : null;
   return { spf, dmarc };
 }
 
@@ -285,7 +279,7 @@ async function getRdapData(domain: string): Promise<Record<string, unknown>> {
 
 async function gatherEmail(emailInput: string): Promise<Record<string, unknown>> {
   const email = emailInput.toLowerCase().trim();
-  if (!/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(email)) {
+  if (!EMAIL_RE.test(email)) {
     return { error: `Invalid email format: ${email}`, valid: false };
   }
 
@@ -352,21 +346,24 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
 
 // ── Phone OSINT ──────────────────────────────────────────────────────────────
 
+const NUMBER_TYPE_MAP: Record<string, string> = {
+  FIXED_LINE: "Fixed Line",
+  MOBILE: "Mobile",
+  FIXED_LINE_OR_MOBILE: "Fixed Line or Mobile",
+  TOLL_FREE: "Toll Free",
+  PREMIUM_RATE: "Premium Rate",
+  SHARED_COST: "Shared Cost",
+  VOIP: "VoIP",
+  PERSONAL_NUMBER: "Personal Number",
+  PAGER: "Pager",
+  UAN: "UAN",
+  VOICEMAIL: "Voicemail",
+};
+const HTML_TAG_RE = /<[^>]+>/g;
+const EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+
 function numberTypeToString(type: string | undefined): string {
-  const map: Record<string, string> = {
-    FIXED_LINE: "Fixed Line",
-    MOBILE: "Mobile",
-    FIXED_LINE_OR_MOBILE: "Fixed Line or Mobile",
-    TOLL_FREE: "Toll Free",
-    PREMIUM_RATE: "Premium Rate",
-    SHARED_COST: "Shared Cost",
-    VOIP: "VoIP",
-    PERSONAL_NUMBER: "Personal Number",
-    PAGER: "Pager",
-    UAN: "UAN",
-    VOICEMAIL: "Voicemail",
-  };
-  return map[type ?? ""] ?? "Unknown";
+  return NUMBER_TYPE_MAP[type ?? ""] ?? "Unknown";
 }
 
 // ── Reverse Phone Lookup ─────────────────────────────────────────────────────
@@ -381,6 +378,7 @@ async function checkReversePhone(e164: string): Promise<Record<string, unknown>>
     const url = `https://lookups.twilio.com/v2/PhoneNumbers/${encodeURIComponent(e164)}?Fields=caller_name,line_type_intelligence`;
     const resp = await fetch(url, {
       headers: { "Authorization": "Basic " + btoa(`${accountSid}:${authToken}`) },
+      signal: AbortSignal.timeout(8000),
     });
     if (!resp.ok) {
       const body = await resp.json().catch(() => ({})) as Record<string, unknown>;
@@ -411,7 +409,7 @@ async function checkNumVerify(phone: string): Promise<Record<string, unknown>> {
 
   try {
     const url = `https://apilayer.net/api/validate?access_key=${encodeURIComponent(apiKey)}&number=${encodeURIComponent(phone)}&format=1`;
-    const resp = await fetch(url);
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!resp.ok) return { configured: true, error: `HTTP ${resp.status}` };
     const data = await resp.json() as Record<string, unknown>;
     const apiErr = data.error as Record<string, unknown> | undefined;
@@ -780,7 +778,7 @@ async function searchMastodon(username: string): Promise<Record<string, unknown>
     return accounts.map((a) => ({
       username: a["username"],
       display_name: a["display_name"],
-      bio: String(a["note"] ?? "").replace(/<[^>]+>/g, "").slice(0, 200),
+      bio: String(a["note"] ?? "").replace(HTML_TAG_RE, "").slice(0, 200),
       url: a["url"],
       followers: a["followers_count"],
       statuses: a["statuses_count"],
@@ -800,7 +798,7 @@ async function searchWikipedia(query: string): Promise<Record<string, unknown>> 
     const d = (await resp.json()) as { query?: { search?: Array<Record<string, unknown>> } };
     const results = (d.query?.search ?? []).map((r) => ({
       title: r["title"],
-      snippet: String(r["snippet"] ?? "").replace(/<[^>]+>/g, "").slice(0, 200),
+      snippet: String(r["snippet"] ?? "").replace(HTML_TAG_RE, "").slice(0, 200),
       pageid: r["pageid"],
       url: `https://en.wikipedia.org/wiki/${encodeURIComponent(String(r["title"] ?? "").replace(/ /g, "_"))}`,
     }));
