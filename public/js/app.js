@@ -171,6 +171,80 @@ function renderReport(data, type) {
   document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// ── WEB INTELLIGENCE CARD (shared) ───────────────────────────
+function renderWebIntel(d, grid) {
+  const wi = d.web_intel;
+  if (!wi) return;
+
+  const ddg  = wi.ddg  || {};
+  const bing = wi.bing || {};
+
+  // Nothing to show at all
+  if (!ddg.found && !bing.configured && !bing.results?.length) return;
+
+  let html = '';
+
+  // DDG abstract / answer
+  if (ddg.abstract) {
+    html += `
+      <div class="wi-abstract">
+        <div class="wi-abstract-text">${esc(ddg.abstract)}</div>
+        ${ddg.abstract_source ? `<div class="wi-source">
+          <i class="fa-solid fa-circle-info"></i> Source:
+          <a href="${esc(ddg.abstract_url || '#')}" target="_blank" rel="noopener">${esc(ddg.abstract_source)}</a>
+        </div>` : ''}
+      </div>`;
+  }
+  if (ddg.answer) {
+    html += `<div class="wi-answer"><i class="fa-solid fa-bolt"></i> ${esc(ddg.answer)}</div>`;
+  }
+
+  // Infobox facts
+  if (ddg.facts?.length) {
+    html += `<div class="wi-facts">${ddg.facts.map(f =>
+      `<div class="wi-fact-row"><span class="wi-fact-label">${esc(f.label)}</span><span class="wi-fact-value">${esc(f.value)}</span></div>`
+    ).join('')}</div>`;
+  }
+
+  // Bing web results
+  if (bing.configured && bing.results?.length) {
+    html += `<div class="wi-section-label"><i class="fa-solid fa-globe"></i> Web Results${bing.total_estimated ? ` <span class="wi-count">~${Number(bing.total_estimated).toLocaleString()} results</span>` : ''}</div>`;
+    html += `<div class="wi-results">${bing.results.map(r => `
+      <a href="${esc(r.url)}" target="_blank" rel="noopener" class="wi-result">
+        <div class="wi-result-title">${esc(r.title)}</div>
+        <div class="wi-result-url">${esc(r.display_url)}</div>
+        <div class="wi-result-snippet">${esc(r.snippet)}</div>
+        ${r.date ? `<div class="wi-result-date"><i class="fa-regular fa-calendar"></i> ${esc(r.date)}</div>` : ''}
+      </a>`).join('')}</div>`;
+
+    // Bing news
+    if (bing.news_results?.length) {
+      html += `<div class="wi-section-label"><i class="fa-solid fa-newspaper"></i> News</div>`;
+      html += `<div class="wi-results">${bing.news_results.map(n => `
+        <a href="${esc(n.url)}" target="_blank" rel="noopener" class="wi-result">
+          <div class="wi-result-title">${esc(n.title)}</div>
+          ${n.provider ? `<div class="wi-result-url">${esc(n.provider)}${n.published ? ' · ' + esc(n.published) : ''}</div>` : ''}
+          <div class="wi-result-snippet">${esc(n.description)}</div>
+        </a>`).join('')}</div>`;
+    }
+  } else if (bing.configured && bing.error) {
+    html += `<div class="no-data"><i class="fa-solid fa-xmark"></i> Bing: ${esc(String(bing.error))}</div>`;
+  } else if (!bing.configured) {
+    html += `<div class="no-data" style="font-size:12px"><i class="fa-solid fa-key"></i> Set <code>BING_SEARCH_API_KEY</code> env var for live web results (free: 1000/month).</div>`;
+  }
+
+  // DDG related topics
+  if (ddg.related_topics?.length) {
+    html += `<div class="wi-section-label"><i class="fa-solid fa-link"></i> Related</div>`;
+    html += `<div class="wi-related">${ddg.related_topics.map(t => `
+      <a href="${esc(t.url)}" target="_blank" rel="noopener" class="wi-related-item">${esc(t.text)}</a>`
+    ).join('')}</div>`;
+  }
+
+  if (!html) return;
+  grid.appendChild(card('Web Intelligence', 'fa-globe', 'icon-teal', html));
+}
+
 // ── EMAIL RENDER ─────────────────────────────────────────────
 function renderEmail(d, targetEl, grid) {
   // Avatar
@@ -202,6 +276,8 @@ function renderEmail(d, targetEl, grid) {
         ${d.valid ? 'Valid' : 'Invalid'}
       </div>
     </div>`;
+
+  renderWebIntel(d, grid);
 
   // --- Identity Info card
   const identRows = [
@@ -374,6 +450,8 @@ function renderPhone(d, targetEl, grid) {
     return;
   }
 
+  renderWebIntel(d, grid);
+
   // Number Details
   const detailRows = [
     d.partial ? row('Number Pattern', d.formats?.['Input Pattern'] || d.target) : '',
@@ -495,6 +573,8 @@ function renderName(d, targetEl, grid) {
       <div class="target-name">${esc(d.target)}</div>
       <div class="target-tags">${tags}</div>
     </div>`;
+
+  renderWebIntel(d, grid);
 
   // Key findings summary
   const kf = d.key_findings || {};

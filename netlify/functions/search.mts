@@ -299,12 +299,14 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
   if (username.includes(".") || username.includes("_"))
     usernameNotes.push("Username contains separator (firstname.lastname pattern likely)");
 
-  const [mx, txt, gravatar, breach, whoisData] = await Promise.all([
+  const [mx, txt, gravatar, breach, whoisData, ddg, bing] = await Promise.all([
     getMxRecords(domain),
     getTxtRecords(domain),
     checkGravatar(email),
     checkHibp(email),
     isCorporate ? getRdapData(domain) : Promise.resolve({ note: "Skipped for major/known providers" }),
+    checkDuckDuckGo(email),
+    checkBingSearch(email),
   ]);
 
   const enc = encodeURIComponent;
@@ -322,6 +324,7 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
     txt_records: txt,
     whois: whoisData,
     breach_data: breach,
+    web_intel: { ddg, bing },
     search_links: {
       "Google (exact)": `https://www.google.com/search?q="${enc(email)}"`,
       "Bing": `https://www.bing.com/search?q="${enc(email)}"`,
@@ -364,6 +367,86 @@ const EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
 
 function numberTypeToString(type: string | undefined): string {
   return NUMBER_TYPE_MAP[type ?? ""] ?? "Unknown";
+}
+
+// ── Web Intelligence (shared across all search types) ────────────────────────
+
+// DuckDuckGo Instant Answer — free, no key needed
+async function checkDuckDuckGo(query: string): Promise<Record<string, unknown>> {
+  try {
+    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!resp.ok) return { found: false };
+    const data = await resp.json() as Record<string, unknown>;
+
+    const abstract = String(data.AbstractText ?? "").trim();
+    const answer   = String(data.Answer ?? "").trim();
+    const related  = (data.RelatedTopics as Array<Record<string, unknown>> ?? [])
+      .filter(t => t.Text && t.FirstURL && !String(t.FirstURL).includes("duckduckgo.com/c/"))
+      .slice(0, 6)
+      .map(t => ({ text: String(t.Text ?? "").slice(0, 220), url: String(t.FirstURL ?? "") }));
+
+    const infobox = data.Infobox as Record<string, unknown> | null;
+    const infoboxContent = infobox?.content as Array<Record<string, unknown>> | undefined;
+    const facts = (infoboxContent ?? [])
+      .filter(f => f.label && f.value)
+      .slice(0, 8)
+      .map(f => ({ label: String(f.label), value: String(f.value) }));
+
+    return {
+      found: !!(abstract || answer || related.length || facts.length),
+      abstract:         abstract || null,
+      abstract_source:  String(data.AbstractSource ?? "") || null,
+      abstract_url:     String(data.AbstractURL ?? "") || null,
+      answer:           answer || null,
+      answer_type:      String(data.AnswerType ?? "") || null,
+      image:            String(data.Image ?? "") || null,
+      related_topics:   related,
+      facts,
+    };
+  } catch {
+    return { found: false };
+  }
+}
+
+// Bing Web Search — real web snippets (needs BING_SEARCH_API_KEY, free: 1000 req/month)
+async function checkBingSearch(query: string): Promise<Record<string, unknown>> {
+  const apiKey = Netlify.env.get("BING_SEARCH_API_KEY");
+  if (!apiKey) return { configured: false };
+
+  try {
+    const url = `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=6&textDecorations=false&safeSearch=Off`;
+    const resp = await fetch(url, {
+      headers: { "Ocp-Apim-Subscription-Key": apiKey },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!resp.ok) return { configured: true, error: `HTTP ${resp.status}` };
+    const data = await resp.json() as Record<string, unknown>;
+    const pages = data.webPages as Record<string, unknown> | undefined;
+    const results = (pages?.value as Array<Record<string, unknown>> ?? []).map(p => ({
+      title:       String(p.name ?? ""),
+      snippet:     String(p.snippet ?? "").slice(0, 300),
+      url:         String(p.url ?? ""),
+      display_url: String(p.displayUrl ?? ""),
+      date:        String(p.dateLastCrawled ?? "").slice(0, 10) || null,
+    }));
+    const news = data.news as Record<string, unknown> | undefined;
+    const newsResults = (news?.value as Array<Record<string, unknown>> ?? []).slice(0, 3).map(n => ({
+      title:       String(n.name ?? ""),
+      description: String(n.description ?? "").slice(0, 200),
+      url:         String(n.url ?? ""),
+      published:   String(n.datePublished ?? "").slice(0, 10) || null,
+      provider:    String((n.provider as Array<Record<string,unknown>>)?.[0]?.name ?? ""),
+    }));
+    return {
+      configured: true,
+      results,
+      news_results: newsResults,
+      total_estimated: Number(pages?.totalEstimatedMatches ?? 0),
+    };
+  } catch (e: unknown) {
+    return { configured: true, error: e instanceof Error ? e.message : "timeout" };
+  }
 }
 
 // ── Reverse Phone Lookup ─────────────────────────────────────────────────────
@@ -607,8 +690,13 @@ async function gatherPhone(phoneInput: string): Promise<Record<string, unknown>>
       "Signal (click to open app)": `https://signal.me/#p/${e164}`,
     },
     ...await (async () => {
-      const [reverse_lookup, numverify] = await Promise.all([checkReversePhone(e164), checkNumVerify(e164)]);
-      return { reverse_lookup, numverify };
+      const [reverse_lookup, numverify, ddg, bing] = await Promise.all([
+        checkReversePhone(e164),
+        checkNumVerify(e164),
+        checkDuckDuckGo(e164),
+        checkBingSearch(e164),
+      ]);
+      return { reverse_lookup, numverify, web_intel: { ddg, bing } };
     })(),
   };
 }
@@ -815,13 +903,15 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
   const parts = parseName(name);
   const usernames = generateUsernames(parts);
 
-  const [githubResults, redditResults, keybaseResults, devtoResults, mastodonResults, wikipedia] = await Promise.all([
+  const [githubResults, redditResults, keybaseResults, devtoResults, mastodonResults, wikipedia, ddg, bing] = await Promise.all([
     checkGithub(usernames),
     checkReddit(usernames),
     checkKeybase(usernames),
     checkDevTo(usernames),
     searchMastodon(parts.first || name),
     searchWikipedia(name),
+    checkDuckDuckGo(name),
+    checkBingSearch(name),
   ]);
 
   const foundCount = githubResults.filter((r) => r["found"] === true).length;
@@ -880,6 +970,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
     mastodon_accounts: mastodonResults,
     mastodon_found_count: mastodonFoundCount,
     wikipedia,
+    web_intel: { ddg, bing },
     search_links: {
       "Google (full name)": `https://www.google.com/search?q=${encodedFull}`,
       "Google News": `https://www.google.com/search?q=${encodedFull}&tbm=nws`,
