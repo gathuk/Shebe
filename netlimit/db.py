@@ -13,6 +13,11 @@ _engine = None
 def init_db(db_url="sqlite:///netlimit.db"):
     """Create the engine, bind the session factory, and create tables."""
     global _engine
+    if db_url.startswith("postgres://"):
+        # SQLAlchemy 1.4+ dropped the legacy "postgres://" scheme; Render,
+        # Heroku, and friends still hand out URLs with it.
+        db_url = "postgresql://" + db_url[len("postgres://"):]
+
     engine_kwargs = {}
     if db_url.startswith("sqlite"):
         engine_kwargs["connect_args"] = {"check_same_thread": False}

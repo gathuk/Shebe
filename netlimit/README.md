@@ -98,24 +98,26 @@ forms that write data). It deploys cleanly as a normal web service instead.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/gathuk/Shebe)
 
-This uses `render.yaml` at the repo root -- free plan, no config needed
-beyond clicking through with a Render account. First boot auto-seeds the
-9 departments / 400 demo users (`netlimit/wsgi.py`).
+`render.yaml` at the repo root provisions both the web service *and* a
+free managed Postgres database, and wires `NETLIMIT_DB_URL` between them
+automatically -- no config needed beyond clicking through with a Render
+account. First boot auto-seeds the 9 departments / 400 demo users
+(`netlimit/wsgi.py`), and after that, data lives in Postgres: policy
+edits, new users, usage records all persist across redeploys and idle
+spin-downs, unlike the web service's own ephemeral disk. Render's free
+Postgres tier expires after 90 days -- upgrade the database plan, or
+point `NETLIMIT_DB_URL` at another hosted Postgres (Neon, Supabase, ...)
+for longer-lived persistence; both work via `postgres://` or
+`postgresql://` URLs (`db.py` normalizes either).
 
 **Railway:** connect the GitHub repo, it will pick up the root `Procfile`
 (`web: gunicorn -w 2 -b 0.0.0.0:$PORT netlimit.wsgi:app`) automatically.
-Set `NETLIMIT_DB_URL` if you want something other than the default SQLite
-file.
+Add a Postgres plugin and set `NETLIMIT_DB_URL` to its connection string
+the same way.
 
-**Free-tier caveat:** both platforms' free instances have an *ephemeral*
-disk -- it resets on redeploys and after the instance spins down from
-inactivity. `wsgi.py` reseeds demo data automatically whenever it boots to
-an empty database, so the client always lands on a working demo, but any
-policy/user edits made during a session won't survive an idle spin-down.
-For a persistent instance the client can keep editing across days, either
-upgrade to a paid plan with a persistent disk, or point `NETLIMIT_DB_URL`
-at a hosted Postgres (e.g. Neon, Supabase) -- the app is already
-database-agnostic via SQLAlchemy.
+Local development still defaults to a SQLite file
+(`sqlite:///netlimit.db`) when `NETLIMIT_DB_URL` is unset -- no Postgres
+setup required just to run the app or tests locally.
 
 Set `NETLIMIT_DB_URL` to point at a real database in production, e.g.
 `postgresql://user:pass@host/netlimit` (any SQLAlchemy URL works; swap
