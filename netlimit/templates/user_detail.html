@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ user.full_name }} - NetLimit{% endblock %}
+{% block content %}
+<h1>{{ user.full_name }}</h1>
+<p class="subtitle">{{ user.username }} &middot; {{ user.department.name }} &middot; {{ user.ip_address }}{% if user.is_exempt %} &middot; <span class="badge ok">exempt from limits</span>{% endif %}</p>
+
+<div class="cards">
+  <div class="card">
+    <div class="value">{{ status.time.used }} / {{ status.time.quota }} min</div>
+    <div class="label">Time today {% if status.time.exceeded %}<span class="badge danger">exceeded</span>{% endif %}</div>
+  </div>
+  <div class="card">
+    <div class="value">{{ "%.0f"|format(status.data.used) }} / {{ status.data.quota }} MB</div>
+    <div class="label">Data today {% if status.data.exceeded %}<span class="badge danger">exceeded</span>{% endif %}</div>
+  </div>
+</div>
+
+<h2>Usage history (last 14 days)</h2>
+{% if history %}
+<table>
+  <tr><th>Date</th><th>Category</th><th>Minutes</th><th>Data (MB)</th><th>Blocked attempts</th></tr>
+  {% for record in history %}
+  <tr>
+    <td>{{ record.date }}</td>
+    <td>{{ record.category.name if record.category else "uncategorized" }}</td>
+    <td>{{ record.minutes_used }}</td>
+    <td>{{ "%.1f"|format(record.data_mb_used) }}</td>
+    <td>{{ record.blocked_attempts }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No usage recorded yet.</p>
+{% endif %}
+
+<h2>Alerts</h2>
+{% if alerts %}
+<table>
+  <tr><th>Date</th><th>Type</th><th>Message</th></tr>
+  {% for alert in alerts %}
+  <tr><td>{{ alert.date }}</td><td>{{ alert.alert_type }}</td><td>{{ alert.message }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No alerts for this user.</p>
+{% endif %}
+{% endblock %}

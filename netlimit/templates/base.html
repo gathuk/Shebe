@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}NetLimit{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">NetLimit</div>
+    <nav>
+      <a href="{{ url_for('dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('users_list') }}">Users</a>
+      <a href="{{ url_for('departments') }}">Departments</a>
+      <a href="{{ url_for('categories') }}">Categories</a>
+      <a href="{{ url_for('policies') }}">Policies</a>
+      <a href="{{ url_for('reports') }}">Reports</a>
+      <a href="{{ url_for('squid_config_view') }}">Squid Config</a>
+    </nav>
+  </header>
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
