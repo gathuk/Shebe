@@ -88,6 +88,35 @@ python -m netlimit.seed              # creates 9 departments, default
 python -m netlimit.app               # dashboard on http://localhost:5050
 ```
 
+## Hosting a demo for the client to test
+
+The dashboard needs a live server process and a database, which rules out
+Netlify (static hosting + stateless functions -- no fit for an app with
+forms that write data). It deploys cleanly as a normal web service instead.
+
+**Render (one click):**
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/gathuk/Shebe)
+
+This uses `render.yaml` at the repo root -- free plan, no config needed
+beyond clicking through with a Render account. First boot auto-seeds the
+9 departments / 400 demo users (`netlimit/wsgi.py`).
+
+**Railway:** connect the GitHub repo, it will pick up the root `Procfile`
+(`web: gunicorn -w 2 -b 0.0.0.0:$PORT netlimit.wsgi:app`) automatically.
+Set `NETLIMIT_DB_URL` if you want something other than the default SQLite
+file.
+
+**Free-tier caveat:** both platforms' free instances have an *ephemeral*
+disk -- it resets on redeploys and after the instance spins down from
+inactivity. `wsgi.py` reseeds demo data automatically whenever it boots to
+an empty database, so the client always lands on a working demo, but any
+policy/user edits made during a session won't survive an idle spin-down.
+For a persistent instance the client can keep editing across days, either
+upgrade to a paid plan with a persistent disk, or point `NETLIMIT_DB_URL`
+at a hosted Postgres (e.g. Neon, Supabase) -- the app is already
+database-agnostic via SQLAlchemy.
+
 Set `NETLIMIT_DB_URL` to point at a real database in production, e.g.
 `postgresql://user:pass@host/netlimit` (any SQLAlchemy URL works; swap
 `sqlalchemy` for the appropriate DB driver in `requirements.txt`).

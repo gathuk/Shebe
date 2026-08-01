@@ -1,0 +1,20 @@
+# Render Blueprint for the NetLimit dashboard (netlimit/).
+# Deploy: https://render.com/deploy?repo=https://github.com/gathuk/Shebe
+#
+# Free-tier note: the instance's disk is ephemeral (wiped on redeploy /
+# idle spin-down), so netlimit/wsgi.py auto-reseeds demo data on boot if
+# the database is empty. Fine for a client demo; see netlimit/README.md
+# for a persistent production setup.
+services:
+  - type: web
+    name: netlimit
+    runtime: python
+    plan: free
+    buildCommand: pip install -r netlimit/requirements.txt
+    startCommand: gunicorn -w 2 -b 0.0.0.0:$PORT netlimit.wsgi:app
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: NETLIMIT_DB_URL
+        value: sqlite:///netlimit.db
