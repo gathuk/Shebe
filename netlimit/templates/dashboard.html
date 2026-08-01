@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - NetLimit{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<p class="subtitle">{{ today.strftime('%A, %d %B %Y') }}</p>
+
+<div class="cards">
+  <div class="card"><div class="value">{{ total_users }}</div><div class="label">Users</div></div>
+  <div class="card"><div class="value">{{ total_departments }}</div><div class="label">Departments</div></div>
+  <div class="card"><div class="value">{{ alerts_today|length }}</div><div class="label">Alerts today</div></div>
+</div>
+
+<h2>Top users today (by minutes online)</h2>
+{% if top_users %}
+<table>
+  <tr><th>User</th><th>Minutes used</th></tr>
+  {% for user, minutes in top_users %}
+  <tr><td><a href="{{ url_for('user_detail', user_id=user.id) }}">{{ user.full_name }}</a></td><td>{{ minutes }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No usage recorded yet today.</p>
+{% endif %}
+
+<h2>Blocked attempts by category today</h2>
+{% if blocked_by_category %}
+<table>
+  <tr><th>Category</th><th>Blocked attempts</th></tr>
+  {% for name, attempts in blocked_by_category %}
+  <tr><td>{{ name }}</td><td>{{ attempts }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No blocked attempts recorded yet today.</p>
+{% endif %}
+
+<h2>Recent alerts</h2>
+{% if alerts_today %}
+<table>
+  <tr><th>User</th><th>Type</th><th>Message</th><th>Time</th></tr>
+  {% for alert in alerts_today %}
+  <tr>
+    <td><a href="{{ url_for('user_detail', user_id=alert.user_id) }}">{{ alert.user.full_name }}</a></td>
+    <td>{{ alert.alert_type }}</td>
+    <td>{{ alert.message }}</td>
+    <td>{{ alert.created_at.strftime('%H:%M') }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No alerts today.</p>
+{% endif %}
+{% endblock %}

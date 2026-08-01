@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Reports - NetLimit{% endblock %}
+{% block content %}
+<h1>Usage report</h1>
+<form class="form-row" method="get">
+  <input type="date" name="date" value="{{ date.isoformat() }}" onchange="this.form.submit()">
+</form>
+
+<table>
+  <tr><th>Department</th><th>Total minutes</th><th>Total data (MB)</th><th>Blocked attempts</th><th>Avg minutes/user</th></tr>
+  {% for row in rows %}
+  <tr>
+    <td>{{ row.department.name }}</td>
+    <td>{{ row.minutes }}</td>
+    <td>{{ "%.0f"|format(row.data_mb) }}</td>
+    <td>{{ row.blocked }}</td>
+    <td>
+      <div class="bar-track"><div class="bar-fill" style="width: {{ (row.avg_minutes_per_user / max_minutes * 100)|round(0) }}%"></div></div>
+      {{ "%.0f"|format(row.avg_minutes_per_user) }} min
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

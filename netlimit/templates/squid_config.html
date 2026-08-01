@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Squid Config - NetLimit{% endblock %}
+{% block content %}
+<h1>Generated Squid configuration</h1>
+<p class="subtitle">
+  Include this from your organization's squid.conf, or
+  <a href="{{ url_for('squid_config_view', download=1) }}">download it</a>.
+  Also deploy <code>squid_helper.py</code> as the external ACL helper -- it's the
+  authoritative check for daily quotas.
+</p>
+<pre class="config">{{ config_text }}</pre>
+{% endblock %}
