@@ -41,6 +41,14 @@ body {
 
 .content { padding: 24px; max-width: 1100px; margin: 0 auto; }
 
+.footer {
+  text-align: center;
+  padding: 20px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  border-top: 1px solid var(--border);
+}
+
 h1 { font-size: 1.4rem; margin-bottom: 4px; }
 h2 { font-size: 1.1rem; margin-top: 28px; }
 .subtitle { color: var(--muted); margin-top: 0; margin-bottom: 20px; }
