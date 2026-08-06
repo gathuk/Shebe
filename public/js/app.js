@@ -154,9 +154,11 @@ function renderWebIntel(d, grid) {
     ).join('')}</div>`;
   }
 
-  // Bing web results
+  // Web results (Bing if key set, otherwise DuckDuckGo HTML scrape)
   if (bing.configured && bing.results?.length) {
-    html += `<div class="wi-section-label"><i class="fa-solid fa-globe"></i> Web Results${bing.total_estimated ? ` <span class="wi-count">~${Number(bing.total_estimated).toLocaleString()} results</span>` : ''}</div>`;
+    const sourceLabel = bing.source === 'ddg' ? 'DuckDuckGo' : 'Bing';
+    const sourceIcon  = bing.source === 'ddg' ? 'fa-magnifying-glass' : 'fa-b';
+    html += `<div class="wi-section-label"><i class="fa-solid ${sourceIcon}"></i> Web Results <span style="font-size:11px;color:var(--text3);font-weight:400">via ${sourceLabel}</span>${bing.total_estimated ? ` <span class="wi-count">~${Number(bing.total_estimated).toLocaleString()}</span>` : ''}</div>`;
     html += `<div class="wi-results">${bing.results.map(r => `
       <a href="${esc(r.url)}" target="_blank" rel="noopener" class="wi-result">
         <div class="wi-result-title">${esc(r.title)}</div>
@@ -165,7 +167,7 @@ function renderWebIntel(d, grid) {
         ${r.date ? `<div class="wi-result-date"><i class="fa-regular fa-calendar"></i> ${esc(r.date)}</div>` : ''}
       </a>`).join('')}</div>`;
 
-    // Bing news
+    // Bing news (only present when Bing key is set)
     if (bing.news_results?.length) {
       html += `<div class="wi-section-label"><i class="fa-solid fa-newspaper"></i> News</div>`;
       html += `<div class="wi-results">${bing.news_results.map(n => `
@@ -176,9 +178,9 @@ function renderWebIntel(d, grid) {
         </a>`).join('')}</div>`;
     }
   } else if (bing.configured && bing.error) {
-    html += `<div class="no-data"><i class="fa-solid fa-xmark"></i> Bing: ${esc(String(bing.error))}</div>`;
-  } else if (!bing.configured) {
-    html += `<div class="no-data" style="font-size:12px"><i class="fa-solid fa-key"></i> Set <code>BING_SEARCH_API_KEY</code> env var for live web results (free: 1000/month).</div>`;
+    html += `<div class="no-data"><i class="fa-solid fa-xmark"></i> Web search: ${esc(String(bing.error))}</div>`;
+  } else if (bing.configured && !bing.results?.length) {
+    html += `<div class="no-data"><i class="fa-solid fa-circle-info"></i> No web results found for this query.</div>`;
   }
 
   // DDG related topics

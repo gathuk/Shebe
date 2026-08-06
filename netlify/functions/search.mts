@@ -472,10 +472,65 @@ async function checkDuckDuckGo(query: string): Promise<Record<string, unknown>> 
   }
 }
 
+// DuckDuckGo HTML scraper — free fallback for real web results (no API key needed)
+async function scrapeDuckDuckGoHtml(query: string): Promise<Record<string, unknown>> {
+  try {
+    const resp = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      signal: AbortSignal.timeout(9000),
+    });
+    if (!resp.ok) return { configured: true, source: "ddg", error: `HTTP ${resp.status}`, results: [] };
+    const html = await resp.text();
+
+    // Extract URLs: DDG HTML uses redirect links with uddg= param containing the real URL
+    const urlRe = /href="\/\/duckduckgo\.com\/l\/\?[^"]*uddg=([^&"]+)[^"]*"[^>]*class="result__a"[^>]*>|class="result__a"[^>]*href="\/\/duckduckgo\.com\/l\/\?[^"]*uddg=([^&"]+)[^"]*"[^>]*>/gi;
+    const titleRe = /class="result__a"[^>]*>([\s\S]*?)<\/a>/gi;
+    const snippetRe = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+
+    const urls: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = urlRe.exec(html)) !== null) {
+      const encoded = m[1] || m[2];
+      if (encoded) {
+        try { urls.push(decodeURIComponent(encoded)); } catch { /* skip */ }
+      }
+    }
+
+    const titles: string[] = [];
+    while ((m = titleRe.exec(html)) !== null) {
+      const t = m[1].replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
+      if (t) titles.push(t);
+    }
+
+    const snippets: string[] = [];
+    while ((m = snippetRe.exec(html)) !== null) {
+      const s = m[1].replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
+      if (s) snippets.push(s);
+    }
+
+    const results: Array<Record<string, unknown>> = [];
+    for (let i = 0; i < Math.min(titles.length, 6); i++) {
+      const url = urls[i] ?? "";
+      let displayUrl = url;
+      try { displayUrl = new URL(url).hostname; } catch { /* keep raw */ }
+      results.push({ title: titles[i], url, display_url: displayUrl, snippet: snippets[i] ?? "" });
+    }
+
+    return { configured: true, source: "ddg", results, total_estimated: null };
+  } catch (e: unknown) {
+    return { configured: true, source: "ddg", error: e instanceof Error ? e.message : "failed", results: [] };
+  }
+}
+
 // Bing Web Search — real web snippets (needs BING_SEARCH_API_KEY, free: 1000 req/month)
+// Falls back to DuckDuckGo HTML scraping when key is not set.
 async function checkBingSearch(query: string): Promise<Record<string, unknown>> {
   const apiKey = Netlify.env.get("BING_SEARCH_API_KEY");
-  if (!apiKey) return { configured: false };
+  if (!apiKey) return scrapeDuckDuckGoHtml(query);
 
   try {
     const url = `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=6&textDecorations=false&safeSearch=Off`;
