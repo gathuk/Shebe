@@ -299,7 +299,7 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
   if (username.includes(".") || username.includes("_"))
     usernameNotes.push("Username contains separator (firstname.lastname pattern likely)");
 
-  const [mx, txt, gravatar, breach, whoisData, ddg, bing] = await Promise.all([
+  const [mx, txt, gravatar, breach, whoisData, ddg, bing, emailRep] = await Promise.all([
     getMxRecords(domain),
     getTxtRecords(domain),
     checkGravatar(email),
@@ -307,6 +307,7 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
     isCorporate ? getRdapData(domain) : Promise.resolve({ note: "Skipped for major/known providers" }),
     checkDuckDuckGo(email),
     checkBingSearch(email),
+    checkEmailRep(email),
   ]);
 
   const enc = encodeURIComponent;
@@ -324,6 +325,7 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
     txt_records: txt,
     whois: whoisData,
     breach_data: breach,
+    email_rep: emailRep,
     web_intel: { ddg, bing },
     search_links: {
       "Google (exact)": `https://www.google.com/search?q="${enc(email)}"`,
@@ -367,6 +369,67 @@ const EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
 
 function numberTypeToString(type: string | undefined): string {
   return NUMBER_TYPE_MAP[type ?? ""] ?? "Unknown";
+}
+
+// ── Extra free live sources ───────────────────────────────────────────────────
+
+// EmailRep.io — free, no key (10 req/day): reputation + linked profiles + first/last seen
+async function checkEmailRep(email: string): Promise<Record<string, unknown>> {
+  try {
+    const resp = await fetch(`https://emailrep.io/${encodeURIComponent(email)}`, {
+      headers: { "User-Agent": "shebe-osint/1.0" },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!resp.ok) return { error: `HTTP ${resp.status}` };
+    const data = await resp.json() as Record<string, unknown>;
+    const details = (data.details ?? {}) as Record<string, unknown>;
+    return {
+      reputation:          data.reputation,
+      suspicious:          data.suspicious,
+      references:          data.references,
+      profiles:            details.profiles ?? [],
+      first_seen:          details.first_seen ?? null,
+      last_seen:           details.last_seen ?? null,
+      spam:                details.spam,
+      deliverable:         details.deliverable,
+      malicious_activity:  details.malicious_activity,
+      credentials_leaked:  details.credentials_leaked,
+      data_breach:         details.data_breach,
+      blacklisted:         details.blacklisted,
+      free_provider:       details.free_provider,
+    };
+  } catch (e: unknown) {
+    return { error: e instanceof Error ? e.message : "timeout" };
+  }
+}
+
+// Name analysis — Genderize + Agify + Nationalize (all free, no key, 1000 req/day each)
+async function checkNameAnalysis(firstName: string): Promise<Record<string, unknown>> {
+  if (!firstName) return {};
+  const enc = encodeURIComponent(firstName);
+  const [g, a, n] = await Promise.allSettled([
+    fetch(`https://api.genderize.io/?name=${enc}`, { signal: AbortSignal.timeout(4000) }).then(r => r.json()),
+    fetch(`https://api.agify.io/?name=${enc}`,    { signal: AbortSignal.timeout(4000) }).then(r => r.json()),
+    fetch(`https://api.nationalize.io/?name=${enc}`, { signal: AbortSignal.timeout(4000) }).then(r => r.json()),
+  ]);
+  return {
+    gender: g.status === "fulfilled" && g.value?.gender ? {
+      gender:      String(g.value.gender),
+      probability: Math.round(Number(g.value.probability ?? 0) * 100),
+      sample_size: g.value.count,
+    } : null,
+    age: a.status === "fulfilled" && a.value?.age ? {
+      predicted_age: a.value.age,
+      sample_size:   a.value.count,
+    } : null,
+    nationalities: n.status === "fulfilled"
+      ? (n.value?.country ?? []).slice(0, 5).map((c: Record<string, unknown>) => ({
+          code:        String(c.country_id ?? ""),
+          name:        COUNTRY_NAMES[String(c.country_id ?? "")] ?? String(c.country_id ?? ""),
+          probability: Math.round(Number(c.probability ?? 0) * 100),
+        }))
+      : [],
+  };
 }
 
 // ── Web Intelligence (shared across all search types) ────────────────────────
@@ -903,7 +966,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
   const parts = parseName(name);
   const usernames = generateUsernames(parts);
 
-  const [githubResults, redditResults, keybaseResults, devtoResults, mastodonResults, wikipedia, ddg, bing] = await Promise.all([
+  const [githubResults, redditResults, keybaseResults, devtoResults, mastodonResults, wikipedia, ddg, bing, nameAnalysis] = await Promise.all([
     checkGithub(usernames),
     checkReddit(usernames),
     checkKeybase(usernames),
@@ -912,6 +975,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
     searchWikipedia(name),
     checkDuckDuckGo(name),
     checkBingSearch(name),
+    checkNameAnalysis(parts.first || name),
   ]);
 
   const foundCount = githubResults.filter((r) => r["found"] === true).length;
@@ -970,6 +1034,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
     mastodon_accounts: mastodonResults,
     mastodon_found_count: mastodonFoundCount,
     wikipedia,
+    name_analysis: nameAnalysis,
     web_intel: { ddg, bing },
     search_links: {
       "Google (full name)": `https://www.google.com/search?q=${encodedFull}`,

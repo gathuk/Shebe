@@ -355,6 +355,37 @@ function renderEmail(d, targetEl, grid) {
   }
   grid.appendChild(card('Data Breach Check', 'fa-shield-halved', 'icon-red', breachContent));
 
+  // --- Email Reputation (EmailRep.io)
+  const er = d.email_rep;
+  let erContent = '';
+  if (!er || er.error) {
+    erContent = `<div class="no-data"><i class="fa-solid fa-wifi"></i>${er?.error ? esc(String(er.error)) : 'EmailRep unavailable (10 req/day limit)'}</div>`;
+  } else {
+    const repColor = er.reputation === 'high' ? 'var(--green)' : er.reputation === 'medium' ? 'var(--yellow)' : 'var(--red)';
+    const repIcon  = er.reputation === 'high' ? 'fa-circle-check' : er.reputation === 'medium' ? 'fa-circle-exclamation' : 'fa-circle-xmark';
+    const profiles = Array.isArray(er.profiles) ? er.profiles : [];
+    erContent = `
+      <div class="er-reputation">
+        <i class="fa-solid ${repIcon}" style="color:${repColor};font-size:28px;flex-shrink:0"></i>
+        <div>
+          <div style="font-weight:700;color:${repColor};text-transform:capitalize;font-size:15px">${esc(String(er.reputation || 'Unknown'))} Reputation</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">${er.suspicious ? '⚠ Suspicious activity detected' : 'No suspicious activity flagged'}</div>
+        </div>
+      </div>
+      ${er.references != null ? row('References Found', `${er.references}`) : ''}
+      ${profiles.length ? `<div class="data-row"><span class="data-label">Linked Profiles</span><span class="data-value" style="flex-wrap:wrap;gap:4px;display:flex">${profiles.map(p => `<span class="breach-type-tag">${esc(String(p))}</span>`).join('')}</span></div>` : ''}
+      ${er.first_seen ? row('First Seen', String(er.first_seen)) : ''}
+      ${er.last_seen  ? row('Last Seen',  String(er.last_seen))  : ''}
+      ${er.data_breach         === true ? `<div class="data-row"><span class="data-label" style="color:var(--red)">⚠ Data Breach</span><span class="data-value">Seen in breach datasets</span></div>` : ''}
+      ${er.credentials_leaked  === true ? `<div class="data-row"><span class="data-label" style="color:var(--red)">⚠ Credentials Leaked</span><span class="data-value">Passwords have been exposed</span></div>` : ''}
+      ${er.malicious_activity  === true ? `<div class="data-row"><span class="data-label" style="color:var(--red)">⚠ Malicious Activity</span><span class="data-value">Associated with malicious use</span></div>` : ''}
+      ${er.spam         === true ? row('Spam',       'Associated with spam') : ''}
+      ${er.blacklisted  === true ? row('Blacklisted', 'Email is blacklisted') : ''}
+      ${er.deliverable  != null  ? row('Deliverable', er.deliverable ? '✓ Yes' : '✗ No') : ''}
+      <div style="font-size:11px;color:var(--text3);margin-top:10px"><i class="fa-solid fa-circle-info"></i> Source: emailrep.io (free, 10 req/day)</div>`;
+  }
+  grid.appendChild(card('Email Reputation', 'fa-chart-bar', 'icon-teal', erContent));
+
   // --- MX Records
   const mx = d.mx_records;
   let mxContent = '';
@@ -400,22 +431,12 @@ function renderEmail(d, targetEl, grid) {
   }
   grid.appendChild(card('Domain WHOIS', 'fa-globe', 'icon-blue', whoisContent));
 
-  // --- Username profiles
-  if (d.username_profile_links) {
-    const linksHtml = Object.entries(d.username_profile_links).map(([label, url]) =>
-      `<a href="${esc(url)}" target="_blank" rel="noopener" class="link-item">
-        <i class="${platformIcon(label)}"></i>
-        <span class="link-label">${esc(label)}</span>
-        <span class="link-ext"><i class="fa-solid fa-external-link"></i></span>
-      </a>`
-    ).join('');
-    grid.appendChild(card(`Profiles for @${esc(d.username)}`, 'fa-at', 'icon-green', `<div class="link-list">${linksHtml}</div>`));
-  }
-
-  // --- Search links
-  if (d.search_links) {
-    grid.appendChild(card('Search & Investigation Links', 'fa-magnifying-glass', 'icon-yellow', buildLinkList(d.search_links)));
-  }
+  // --- Further Research (collapsible)
+  const researchCard = furtherResearch([
+    d.username_profile_links ? { title: `Profiles for @${d.username}`, links: d.username_profile_links } : null,
+    d.search_links ? { title: 'Search & Investigation', links: d.search_links } : null,
+  ].filter(Boolean));
+  if (researchCard) grid.appendChild(researchCard);
 }
 
 // ── PHONE RENDER ─────────────────────────────────────────────
@@ -536,10 +557,11 @@ function renderPhone(d, targetEl, grid) {
     grid.appendChild(card('Communication Links', 'fa-comments', 'icon-purple', buildLinkList(d.communication_links)));
   }
 
-  // Search links
-  if (d.search_links) {
-    grid.appendChild(card('Search & Lookup Links', 'fa-magnifying-glass', 'icon-yellow', buildLinkList(d.search_links)));
-  }
+  // --- Further Research (collapsible)
+  const phoneResearchCard = furtherResearch([
+    d.search_links ? { title: 'Search & Lookup Links', links: d.search_links } : null,
+  ].filter(Boolean));
+  if (phoneResearchCard) grid.appendChild(phoneResearchCard);
 }
 
 // ── NAME RENDER ──────────────────────────────────────────────
@@ -611,6 +633,40 @@ function renderName(d, targetEl, grid) {
     parts.last   ? row('Last Name', parts.last) : '',
   ].filter(Boolean).join('');
   grid.appendChild(card('Name Breakdown', 'fa-id-badge', 'icon-blue', nameRows));
+
+  // --- Name Demographics (genderize / agify / nationalize)
+  const na = d.name_analysis;
+  if (na && (na.gender || na.age || (na.nationalities && na.nationalities.length > 0))) {
+    let naContent = '';
+    if (na.gender) {
+      const gIcon  = na.gender.gender === 'male' ? 'fa-mars' : 'fa-venus';
+      const gColor = na.gender.gender === 'male' ? 'var(--blue)' : 'var(--purple)';
+      naContent += `<div class="data-row">
+        <span class="data-label">Predicted Gender</span>
+        <span class="data-value"><i class="fa-solid ${gIcon}" style="color:${gColor}"></i>
+          ${esc(na.gender.gender.charAt(0).toUpperCase() + na.gender.gender.slice(1))}
+          <span style="color:var(--text3);font-size:12px"> (${na.gender.probability}% confidence, n=${Number(na.gender.sample_size || 0).toLocaleString()})</span>
+        </span></div>`;
+    }
+    if (na.age) {
+      naContent += `<div class="data-row">
+        <span class="data-label">Predicted Age</span>
+        <span class="data-value">~${na.age.predicted_age} years
+          <span style="color:var(--text3);font-size:12px"> (based on ${Number(na.age.sample_size || 0).toLocaleString()} records)</span>
+        </span></div>`;
+    }
+    if (na.nationalities && na.nationalities.length) {
+      naContent += `<div class="wi-section-label" style="margin-top:10px"><i class="fa-solid fa-earth-africa"></i> Name Origin Probability</div>`;
+      naContent += na.nationalities.map(n => `
+        <div class="nat-row">
+          <span class="nat-name">${esc(n.name)}</span>
+          <div class="nat-bar-wrap"><div class="nat-bar" style="width:${Math.max(n.probability, 2)}%"></div></div>
+          <span class="nat-pct">${n.probability}%</span>
+        </div>`).join('');
+    }
+    naContent += `<div style="font-size:11px;color:var(--text3);margin-top:10px"><i class="fa-solid fa-circle-info"></i> Statistical predictions from global name databases (genderize.io / agify.io / nationalize.io).</div>`;
+    grid.appendChild(card('Name Demographics', 'fa-chart-pie', 'icon-orange', naContent));
+  }
 
   // GitHub profiles found
   const ghProfiles = (d.github_profiles || []).filter(p => p.found);
@@ -742,33 +798,20 @@ function renderName(d, targetEl, grid) {
     grid.appendChild(card('Generated Usernames', 'fa-at', 'icon-purple', unHtml));
   }
 
-  // Username profile links (collapsible per username)
+  // --- Further Research (collapsible)
   const profileLinks = d.username_profile_links || {};
-  const profileEntries = Object.entries(profileLinks).slice(0, 5);
-  if (profileEntries.length) {
-    let profileHtml = profileEntries.map(([un, links]) => `
-      <div style="margin-bottom:14px">
-        <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px;font-family:var(--mono)">@${esc(un)}</div>
-        <div class="platform-links">
-          ${Object.entries(links).map(([platform, url]) =>
-            `<a href="${esc(url)}" target="_blank" rel="noopener" class="platform-link">
-              <i class="${platformIcon(platform)}"></i> ${esc(platform)}
-            </a>`
-          ).join('')}
-        </div>
-      </div>`).join('');
-    grid.appendChild(card('Profile Links by Username', 'fa-share-nodes', 'icon-teal', profileHtml));
+  const flatProfileLinks = {};
+  for (const [un, links] of Object.entries(profileLinks).slice(0, 5)) {
+    for (const [platform, url] of Object.entries(links)) {
+      flatProfileLinks[`${platform} (@${un})`] = url;
+    }
   }
-
-  // Search links
-  if (d.search_links) {
-    grid.appendChild(card('Search Platforms', 'fa-magnifying-glass', 'icon-yellow', buildLinkList(d.search_links)));
-  }
-
-  // Google Dorks
-  if (d.google_dorks) {
-    grid.appendChild(card('Google Dorks', 'fa-code', 'icon-orange', buildLinkList(d.google_dorks)));
-  }
+  const nameResearchCard = furtherResearch([
+    Object.keys(flatProfileLinks).length ? { title: 'Profile Links by Username', links: flatProfileLinks } : null,
+    d.search_links  ? { title: 'Search Platforms', links: d.search_links  } : null,
+    d.google_dorks  ? { title: 'Google Dorks',     links: d.google_dorks  } : null,
+  ].filter(Boolean));
+  if (nameResearchCard) grid.appendChild(nameResearchCard);
 }
 
 // ── HYBRID RENDER ────────────────────────────────────────────
@@ -862,6 +905,29 @@ function buildLinkList(links) {
       <i class="fa-solid fa-arrow-up-right-from-square link-ext"></i>
     </a>`
   ).join('')}</div>`;
+}
+
+function furtherResearch(sections) {
+  const filtered = sections.filter(s => s.links && Object.keys(s.links).length > 0);
+  if (!filtered.length) return null;
+  const body = filtered.map(s => `
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">${esc(s.title)}</div>
+      ${buildLinkList(s.links)}
+    </div>`).join('');
+  const el = document.createElement('div');
+  el.className = 'report-card';
+  el.style.gridColumn = '1 / -1';
+  el.innerHTML = `
+    <details class="research-details">
+      <summary class="card-header research-summary">
+        <div class="card-icon icon-yellow"><i class="fa-solid fa-magnifying-glass-plus"></i></div>
+        <span class="card-title">Further Research Links</span>
+        <i class="fa-solid fa-chevron-right research-chevron"></i>
+      </summary>
+      <div class="card-body">${body}</div>
+    </details>`;
+  return el;
 }
 
 function errorBlock(msg) {

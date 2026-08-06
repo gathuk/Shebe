@@ -831,6 +831,55 @@ body {
   border-color: rgba(59,130,246,0.4);
 }
 
+/* ── EmailRep card ─────────────────────────────────────────── */
+.er-reputation {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: var(--bg2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+/* ── Name Demographics card ────────────────────────────────── */
+.nat-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 13px;
+}
+.nat-name { flex: 0 0 140px; color: var(--text2); font-weight: 500; }
+.nat-bar-wrap {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.nat-bar { height: 100%; background: var(--accent2); border-radius: 3px; transition: width 0.4s; }
+.nat-pct { flex: 0 0 38px; text-align: right; color: var(--text3); font-size: 12px; }
+
+/* ── Further Research collapsible ──────────────────────────── */
+.research-details { list-style: none; }
+.research-details[open] .research-chevron { transform: rotate(90deg); }
+.research-summary {
+  list-style: none;
+  cursor: pointer;
+  border-radius: 10px;
+  user-select: none;
+}
+.research-summary::-webkit-details-marker { display: none; }
+.research-summary::marker { display: none; }
+.research-chevron {
+  margin-left: auto;
+  color: var(--text3);
+  font-size: 12px;
+  transition: transform 0.2s;
+}
+
 /* ── Print styles ──────────────────────────────────────────── */
 @media print {
   .site-header, .hero, .search-section, .report-actions, .site-footer { display: none !important; }
