@@ -567,6 +567,37 @@ async function checkBingSearch(query: string): Promise<Record<string, unknown>> 
   }
 }
 
+// ── Kenya-specific OSINT ─────────────────────────────────────────────────────
+
+async function searchKenyaIntel(name: string): Promise<{ news: Record<string, unknown>; social_dirs: Record<string, unknown> }> {
+  const q = (suffix: string) => `"${name}" ${suffix}`;
+
+  // Major Kenyan news outlets
+  const newsQuery = q(
+    "site:nation.africa OR site:standardmedia.co.ke OR site:tuko.co.ke OR " +
+    "site:the-star.co.ke OR site:citizen.digital OR site:businessdailyafrica.com OR " +
+    "site:kbc.co.ke OR site:nairobinews.nation.africa OR site:capitalfm.co.ke"
+  );
+
+  // Kenyan social media (with Kenya context) + classifieds + business registries
+  const socialDirQuery = q(
+    "(site:twitter.com OR site:facebook.com OR site:linkedin.com OR site:instagram.com OR site:tiktok.com) Kenya OR Nairobi " +
+    "OR site:yellowpages.co.ke OR site:pigiame.co.ke OR site:jiji.co.ke OR " +
+    "site:brightermonday.co.ke OR site:myjobmag.co.ke OR site:efts.ecitizen.go.ke OR " +
+    "site:judiciary.go.ke OR site:mchanga.africa"
+  );
+
+  const [news, socialDirs] = await Promise.allSettled([
+    scrapeDuckDuckGoHtml(newsQuery),
+    scrapeDuckDuckGoHtml(socialDirQuery),
+  ]);
+
+  return {
+    news:        news.status === "fulfilled"       ? news.value       : { configured: true, results: [] },
+    social_dirs: socialDirs.status === "fulfilled" ? socialDirs.value : { configured: true, results: [] },
+  };
+}
+
 // ── Reverse Phone Lookup ─────────────────────────────────────────────────────
 
 // Twilio Lookup v2 — caller name + live line intelligence (needs TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN)
@@ -808,13 +839,19 @@ async function gatherPhone(phoneInput: string): Promise<Record<string, unknown>>
       "Signal (click to open app)": `https://signal.me/#p/${e164}`,
     },
     ...await (async () => {
-      const [reverse_lookup, numverify, ddg, bing] = await Promise.all([
+      const isKenya = regionCode === "KE";
+      const kenyaPhoneQ = `"${e164}" OR "${String(parsed.nationalNumber)}" ` +
+        `site:jiji.co.ke OR site:pigiame.co.ke OR site:tuko.co.ke OR ` +
+        `site:standardmedia.co.ke OR site:nation.africa OR site:facebook.com OR site:mchanga.africa`;
+
+      const [reverse_lookup, numverify, ddg, bing, kenyaPhone] = await Promise.all([
         checkReversePhone(e164),
         checkNumVerify(e164),
         checkDuckDuckGo(e164),
         checkBingSearch(e164),
+        isKenya ? scrapeDuckDuckGoHtml(kenyaPhoneQ) : Promise.resolve(null),
       ]);
-      return { reverse_lookup, numverify, web_intel: { ddg, bing } };
+      return { reverse_lookup, numverify, web_intel: { ddg, bing }, kenya_phone_mentions: kenyaPhone };
     })(),
   };
 }
@@ -1021,7 +1058,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
   const parts = parseName(name);
   const usernames = generateUsernames(parts);
 
-  const [githubResults, redditResults, keybaseResults, devtoResults, mastodonResults, wikipedia, ddg, bing, nameAnalysis] = await Promise.all([
+  const [githubResults, redditResults, keybaseResults, devtoResults, mastodonResults, wikipedia, ddg, bing, nameAnalysis, kenyaIntel] = await Promise.all([
     checkGithub(usernames),
     checkReddit(usernames),
     checkKeybase(usernames),
@@ -1031,6 +1068,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
     checkDuckDuckGo(name),
     checkBingSearch(name),
     checkNameAnalysis(parts.first || name),
+    searchKenyaIntel(name),
   ]);
 
   const foundCount = githubResults.filter((r) => r["found"] === true).length;
@@ -1090,6 +1128,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
     mastodon_found_count: mastodonFoundCount,
     wikipedia,
     name_analysis: nameAnalysis,
+    kenya_intel: kenyaIntel,
     web_intel: { ddg, bing },
     search_links: {
       "Google (full name)": `https://www.google.com/search?q=${encodedFull}`,

@@ -488,6 +488,18 @@ function renderPhone(d, targetEl, grid) {
   }
   grid.appendChild(card('Reverse Lookup — Caller ID', 'fa-address-card', 'icon-teal', revContent));
 
+  // Kenya Phone Mentions (only shown for +254 numbers)
+  const kp = d.kenya_phone_mentions;
+  if (kp?.results?.length) {
+    const kpHtml = `<div class="wi-results">${kp.results.map(r => `
+      <a href="${esc(r.url)}" target="_blank" rel="noopener" class="wi-result">
+        <div class="wi-result-title">${esc(r.title)}</div>
+        <div class="wi-result-url">${esc(r.display_url)}</div>
+        ${r.snippet ? `<div class="wi-result-snippet">${esc(r.snippet)}</div>` : ''}
+      </a>`).join('')}</div>`;
+    grid.appendChild(card(`Kenya Public Mentions (${kp.results.length})`, 'fa-earth-africa', 'icon-green', kpHtml));
+  }
+
   // Formats
   if (d.formats) {
     const fmtRows = Object.entries(d.formats).map(([k, v]) => row(k, v)).join('');
@@ -737,6 +749,30 @@ function renderName(d, targetEl, grid) {
         <i class="fa-solid fa-arrow-up-right-from-square link-ext" style="flex-shrink:0"></i>
       </a>`).join('')}</div>`;
     grid.appendChild(card('Wikipedia Results', 'fa-brands fa-wikipedia-w', 'icon-blue', wikiHtml));
+  }
+
+  // Kenya News Mentions
+  const kn = d.kenya_intel?.news;
+  if (kn?.results?.length) {
+    const kNewsHtml = `<div class="wi-results">${kn.results.map(r => `
+      <a href="${esc(r.url)}" target="_blank" rel="noopener" class="wi-result">
+        <div class="wi-result-title">${esc(r.title)}</div>
+        <div class="wi-result-url">${esc(r.display_url)}</div>
+        ${r.snippet ? `<div class="wi-result-snippet">${esc(r.snippet)}</div>` : ''}
+      </a>`).join('')}</div>`;
+    grid.appendChild(card(`Kenya News Mentions (${kn.results.length})`, 'fa-newspaper', 'icon-red', kNewsHtml));
+  }
+
+  // Kenya Social Media & Directories
+  const kd = d.kenya_intel?.social_dirs;
+  if (kd?.results?.length) {
+    const kDirHtml = `<div class="wi-results">${kd.results.map(r => `
+      <a href="${esc(r.url)}" target="_blank" rel="noopener" class="wi-result">
+        <div class="wi-result-title">${esc(r.title)}</div>
+        <div class="wi-result-url">${esc(r.display_url)}</div>
+        ${r.snippet ? `<div class="wi-result-snippet">${esc(r.snippet)}</div>` : ''}
+      </a>`).join('')}</div>`;
+    grid.appendChild(card(`Kenya Social & Directories (${kd.results.length})`, 'fa-earth-africa', 'icon-green', kDirHtml));
   }
 
   // Possible usernames
