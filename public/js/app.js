@@ -2,78 +2,26 @@
 
 // ── State ────────────────────────────────────────────────────
 let lastResult = null;
-let currentType = 'name';
-
-const PLACEHOLDER = {
-  name:  'Enter full name (e.g. Jane Smith)',
-  email: 'Enter email address (e.g. jane@example.com)',
-  phone: 'e.g. +254 0712 345 678 or +254 0712 *** 456 (use * for unknown digits)',
-};
-
-const HINT = {
-  name:  'Use the person\'s full name for best results. First and last name required.',
-  email: 'Enter the full email address including domain.',
-  phone: 'Use international format with country code. Replace unknown digits with * (e.g. +254 0712 *** 456 for a partial Kenyan number).',
-  hybrid: 'Combine any of name, email, and phone — the more you provide, the more accurate the cross-referenced results.',
-};
 
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  setupTabs();
   setupForm();
   document.getElementById('newSearchBtn').addEventListener('click', resetToSearch);
   document.getElementById('exportJsonBtn').addEventListener('click', exportJson);
 });
 
-function setupTabs() {
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      currentType = btn.dataset.type;
-      document.getElementById('queryType').value = currentType;
-
-      const singleGroup = document.getElementById('singleInputGroup');
-      const hybridGroup = document.getElementById('hybridInputGroup');
-
-      if (currentType === 'hybrid') {
-        hide('singleInputGroup');
-        singleGroup.querySelector('.search-input').required = false;
-        show('hybridInputGroup');
-      } else {
-        const input = document.getElementById('queryInput');
-        input.placeholder = PLACEHOLDER[currentType];
-        input.value = '';
-        input.required = true;
-        show('singleInputGroup');
-        hide('hybridInputGroup');
-        input.focus();
-      }
-      document.getElementById('inputHint').textContent = HINT[currentType];
-    });
-  });
-}
-
 function setupForm() {
   document.getElementById('searchForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-
-    if (currentType === 'hybrid') {
-      const name = document.getElementById('hybridName').value.trim();
-      const email = document.getElementById('hybridEmail').value.trim();
-      const phone = document.getElementById('hybridPhone').value.trim();
-      if (!name && !email && !phone) {
-        showError('Provide at least one of: name, email, phone');
-        show('resultsSection');
-        return;
-      }
-      await runSearch('hybrid', { name, email, phone });
+    const name  = document.getElementById('hybridName').value.trim();
+    const email = document.getElementById('hybridEmail').value.trim();
+    const phone = document.getElementById('hybridPhone').value.trim();
+    if (!name && !email && !phone) {
+      showError('Provide at least one of: name, email, or phone number');
+      show('resultsSection');
       return;
     }
-
-    const query = document.getElementById('queryInput').value.trim();
-    if (!query) return;
-    await runSearch(currentType, { query });
+    await runSearch('hybrid', { name, email, phone });
   });
 }
 
@@ -135,7 +83,7 @@ function showLoading() {
 function resetToSearch() {
   hide('resultsSection');
   hide('loadingState');
-  document.getElementById('queryInput').focus();
+  document.getElementById('hybridName').focus();
 }
 
 function showError(msg) {

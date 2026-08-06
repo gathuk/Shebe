@@ -40,42 +40,13 @@
 <section class="search-section">
   <div class="container">
     <div class="search-card">
-      <div class="search-tabs">
-        <button class="tab-btn active" data-type="name">
-          <i class="fa-solid fa-user"></i> Name
-        </button>
-        <button class="tab-btn" data-type="email">
-          <i class="fa-solid fa-envelope"></i> Email
-        </button>
-        <button class="tab-btn" data-type="phone">
-          <i class="fa-solid fa-phone"></i> Phone
-        </button>
-        <button class="tab-btn" data-type="hybrid">
-          <i class="fa-solid fa-layer-group"></i> Hybrid
-        </button>
-      </div>
-
       <form id="searchForm" class="search-form" autocomplete="off">
-        <input type="hidden" id="queryType" value="name" />
-        <div class="input-group" id="singleInputGroup">
-          <i class="fa-solid fa-magnifying-glass input-icon"></i>
-          <input
-            type="text"
-            id="queryInput"
-            class="search-input"
-            placeholder="Enter full name (e.g. John Smith)"
-            required
-          />
-          <button type="submit" class="search-btn">
-            <span class="btn-text">Generate Report</span>
-            <i class="fa-solid fa-arrow-right btn-icon"></i>
-          </button>
-        </div>
+        <input type="hidden" id="queryType" value="hybrid" />
 
-        <div id="hybridInputGroup" class="hybrid-input-group hidden">
+        <div id="hybridInputGroup" class="hybrid-input-group">
           <div class="input-group">
             <i class="fa-solid fa-user input-icon"></i>
-            <input type="text" id="hybridName" class="search-input" placeholder="Full name (optional)" />
+            <input type="text" id="hybridName" class="search-input" placeholder="Full name (optional, e.g. Jane Smith)" />
           </div>
           <div class="input-group">
             <i class="fa-solid fa-envelope input-icon"></i>
@@ -83,15 +54,15 @@
           </div>
           <div class="input-group">
             <i class="fa-solid fa-phone input-icon"></i>
-            <input type="text" id="hybridPhone" class="search-input" placeholder="Phone number (optional, e.g. +14155552671)" />
+            <input type="text" id="hybridPhone" class="search-input" placeholder="Phone number (optional, e.g. +254 0712 345 678 or use * for unknown digits)" />
           </div>
           <button type="submit" class="search-btn hybrid-submit-btn">
-            <span class="btn-text">Generate Hybrid Report</span>
+            <span class="btn-text">Generate Report</span>
             <i class="fa-solid fa-arrow-right btn-icon"></i>
           </button>
         </div>
 
-        <p class="input-hint" id="inputHint">Use full name for best results. International format for phone (e.g. +14155552671).</p>
+        <p class="input-hint" id="inputHint">Fill in as many fields as you have — the more provided, the richer the cross-referenced report.</p>
       </form>
 
       <!-- Disclaimer -->
