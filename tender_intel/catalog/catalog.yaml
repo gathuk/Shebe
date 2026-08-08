@@ -1,0 +1,292 @@
+# Skystar Holdings product/service catalog -- seed data.
+#
+# unit_price is null (TODO) on every entry: this prototype does not have
+# Skystar's actual costed price list. Before this catalog is used for a
+# real BOQ, populate unit_price (KES, ex-VAT) from Skystar's current cost
+# sheet for each line -- see tender_intel/README.md, "Populating real data".
+#
+# import_landed_cost fields are optional Kenya import-duty helper inputs
+# (Skystar imports much of this equipment) -- disabled by default
+# (enabled: false) since duty rates vary by HS code / vendor / shipment and
+# must be confirmed per item, not assumed from a generic default. See
+# boq/engine.py:landed_cost().
+
+- key: fortinet_fortigate_1800f
+  name: Fortinet FortiGate 1800F Series Next-Gen Firewall
+  vendor: Fortinet
+  category: networking_cybersecurity
+  typical_unit: unit
+  unit_price: null  # TODO: fill from Skystar cost sheet
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: "Next-gen firewall series; confirm exact model/throughput tier against the tender spec."
+
+- key: windows_server_2025
+  name: Microsoft Windows Server 2025 Licensing
+  vendor: Microsoft
+  category: servers_computing
+  typical_unit: license
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.0
+    idf_rate: 0.0
+    rdl_rate: 0.0
+    vat_rate: 0.16
+  notes: "Software licensing -- import duty not applicable; VAT still applies."
+
+- key: apple_mac_studio_m2_max
+  name: Apple Mac Studio (M2 Max) Workstation
+  vendor: Apple
+  category: servers_computing
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.0
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: "Confirm current EAC duty treatment for computers (often 0% under ICT goods exemptions; verify per shipment)."
+
+- key: victron_multiplus_ii
+  name: Victron Energy MultiPlus-II Inverter/Charger
+  vendor: Victron Energy
+  category: power_solar
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: "Confirm capacity/model variant (e.g. 48/5000) against the tender spec."
+
+- key: solar_water_pump_sqflex
+  name: Solar-Powered Water Pump (SQ/SQFlex-type)
+  vendor: SQFlex-type / Grundfos-compatible
+  category: power_solar
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.0
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: "Solar pumps often carry duty exemptions under renewable-energy incentives -- confirm current KRA gazette notice."
+
+- key: ups_inverter_system
+  name: UPS / Inverter Backup System
+  vendor: Various
+  category: power_solar
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: "Generic UPS/inverter line -- specify capacity (VA/kVA) per tender."
+
+- key: hikvision_ds_k1t804amf
+  name: Hikvision DS-K1T804AMF Fingerprint Access Control Terminal
+  vendor: Hikvision
+  category: security_systems
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: ""
+
+- key: hikvision_ds_k4h258s
+  name: Hikvision DS-K4H258S Access Control Device
+  vendor: Hikvision
+  category: security_systems
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: ""
+
+- key: contactless_ic_rfid_card
+  name: Contactless IC / RFID Access Card
+  vendor: Various
+  category: security_systems
+  typical_unit: card
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: ""
+
+- key: genetec_security_center
+  name: Genetec Security Center (Video Management / Access Control Software)
+  vendor: Genetec
+  category: security_systems
+  typical_unit: license
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.0
+    idf_rate: 0.0
+    rdl_rate: 0.0
+    vat_rate: 0.16
+  notes: "Software licensing -- import duty not applicable."
+
+- key: blackmagic_atem_mini_extreme_iso
+  name: Blackmagic Design ATEM Mini Extreme ISO Switcher
+  vendor: Blackmagic Design
+  category: audiovisual_broadcast
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: ""
+
+- key: panasonic_ag_cx10
+  name: Panasonic AG-CX10 Camcorder
+  vendor: Panasonic
+  category: audiovisual_broadcast
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: ""
+
+- key: shure_sm7b
+  name: Shure SM7B Microphone
+  vendor: Shure
+  category: audiovisual_broadcast
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: ""
+
+- key: shure_sm58
+  name: Shure SM58 Microphone
+  vendor: Shure
+  category: audiovisual_broadcast
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: ""
+
+- key: etc_colorsource_linear_pearl
+  name: ETC ColorSource Linear Pearl Lighting Fixture
+  vendor: ETC
+  category: audiovisual_broadcast
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: ""
+
+- key: etc_eos_apex_5
+  name: ETC Eos Apex 5 Lighting Console
+  vendor: ETC
+  category: audiovisual_broadcast
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: ""
+
+- key: vizrt_viz_connect_studio
+  name: Vizrt Viz Connect Studio I/O
+  vendor: Vizrt
+  category: audiovisual_broadcast
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.0
+    idf_rate: 0.0
+    rdl_rate: 0.0
+    vat_rate: 0.16
+  notes: "Confirm hardware vs. software licensing split for duty treatment."
+
+- key: led_video_wall_indoor
+  name: LED Video Wall Panel (Indoor, Single-Face)
+  vendor: Various
+  category: audiovisual_broadcast
+  typical_unit: "panel (confirm per-m2 vs per-panel pricing per tender)"
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: "Pixel pitch and panel size vary widely -- confirm exact spec per tender before pricing."
+
+- key: zebra_tc26
+  name: Zebra TC26 Rugged Mobile Computer
+  vendor: Zebra
+  category: data_capture
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: ""
+
+- key: zebra_zd421
+  name: Zebra ZD421 Label Printer
+  vendor: Zebra
+  category: data_capture
+  typical_unit: unit
+  unit_price: null
+  import_landed_cost:
+    enabled: false
+    duty_rate: 0.25
+    idf_rate: 0.02
+    rdl_rate: 0.02
+    vat_rate: 0.16
+  notes: ""
