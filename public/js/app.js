@@ -803,59 +803,544 @@ function renderName(d, targetEl, grid) {
 // ── HYBRID RENDER ────────────────────────────────────────────
 function renderHybrid(d, targetEl, grid) {
   if (d.error) {
-    targetEl.innerHTML = `<div class="target-avatar-placeholder"><i class="fa-solid fa-layer-group"></i></div>
-      <div class="target-info"><div class="target-label">Hybrid Search</div><div class="target-name">—</div></div>`;
+    targetEl.innerHTML = `<div class="target-avatar-placeholder"><i class="fa-solid fa-user-secret"></i></div>
+      <div class="target-info"><div class="target-label">Intelligence Report</div><div class="target-name">—</div></div>`;
     grid.appendChild(errorBlock(d.error));
     return;
   }
+  renderOsintDoc(d, targetEl, grid);
+}
 
-  const t = d.target || {};
-  const tags = [
-    t.name  ? tag(`Name: ${t.name}`, 'blue') : '',
-    t.email ? tag(`Email: ${t.email}`, 'purple') : '',
-    t.phone ? tag(`Phone: ${t.phone}`, 'green') : '',
+function renderOsintDoc(d, targetEl, grid) {
+  const t  = d.target || {};
+  const nm = d.name   || {};
+  const em = d.email  || {};
+  const ph = d.phone  || {};
+  const cr = d.cross_reference || {};
+
+  // ── Target header ─────────────────────────────────────────
+  const foundGH = (nm.github_profiles || []).find(p => p.found && p.avatar);
+  const avatarHtml = em.gravatar?.exists && em.gravatar?.avatar_url
+    ? `<img src="${esc(em.gravatar.avatar_url)}" class="target-avatar" alt="Avatar" onerror="this.style.display='none'" />`
+    : foundGH
+      ? `<img src="${esc(foundGH.avatar)}" class="target-avatar" alt="Avatar" onerror="this.style.display='none'" />`
+      : `<div class="target-avatar-placeholder"><i class="fa-solid fa-user-secret"></i></div>`;
+
+  const headerTags = [
+    t.name  ? tag(t.name,  'blue')   : '',
+    t.email ? tag(t.email, 'purple') : '',
+    t.phone ? tag(t.phone, 'green')  : '',
   ].filter(Boolean).join('');
 
   targetEl.innerHTML = `
-    <div class="target-avatar-placeholder"><i class="fa-solid fa-layer-group"></i></div>
+    ${avatarHtml}
     <div class="target-info">
-      <div class="target-label">Hybrid Search</div>
-      <div class="target-name">${esc([t.name, t.email, t.phone].filter(Boolean).join(' / '))}</div>
-      <div class="target-tags">${tags}</div>
+      <div class="target-label">OSINT Intelligence Report</div>
+      <div class="target-name">${esc(t.name || t.email || t.phone || 'Unknown Subject')}</div>
+      <div class="target-tags">${headerTags}</div>
     </div>`;
 
-  // Cross-reference card
-  const cr = d.cross_reference || {};
-  let crContent = '';
+  // ── Counts ────────────────────────────────────────────────
+  const ghCount     = (nm.github_profiles   || []).filter(p => p.found).length;
+  const rdCount     = (nm.reddit_profiles   || []).filter(p => p.found).length;
+  const kbCount     = (nm.keybase_profiles  || []).filter(p => p.found).length;
+  const devtoCount  = (nm.devto_profiles    || []).filter(p => p.found).length;
+  const mastoCount  = (nm.mastodon_accounts || []).filter(a => a.found).length;
+  const wikiCount   = nm.wikipedia?.results?.length || 0;
+  const kNewsCount  = nm.kenya_intel?.news?.results?.length || 0;
+  const kSocCount   = nm.kenya_intel?.social_dirs?.results?.length || 0;
+  const kPhoneCount = ph.kenya_phone_mentions?.results?.length || 0;
+  const webCount    = (nm.web_intel?.bing?.results?.length || 0)
+                    + (em.web_intel?.bing?.results?.length || 0)
+                    + (ph.web_intel?.bing?.results?.length || 0);
+  const breachCount  = em.breach_data?.count || 0;
+  const hasGravatar  = em.gravatar?.exists === true;
+  const hasCallerName = !!(ph.reverse_lookup?.caller_name);
+  const hasEmailRep  = !!(em.email_rep && !em.email_rep.error);
+  const hasMX        = (em.mx_records?.records?.length || 0) > 0;
+  const parts = nm.name_parts || {};
+
+  // ── Executive summary prose ───────────────────────────────
+  const findings = [
+    ghCount     > 0 ? `${ghCount} GitHub profile${ghCount     > 1 ? 's' : ''}` : null,
+    rdCount     > 0 ? `${rdCount} Reddit account${rdCount     > 1 ? 's' : ''}` : null,
+    kbCount     > 0 ? `${kbCount} Keybase profile${kbCount    > 1 ? 's' : ''}` : null,
+    devtoCount  > 0 ? `${devtoCount} DEV.to profile${devtoCount > 1 ? 's' : ''}` : null,
+    mastoCount  > 0 ? `${mastoCount} Mastodon account${mastoCount > 1 ? 's' : ''}` : null,
+    wikiCount   > 0 ? `${wikiCount} Wikipedia result${wikiCount > 1 ? 's' : ''}` : null,
+    kNewsCount  > 0 ? `${kNewsCount} Kenyan news mention${kNewsCount > 1 ? 's' : ''}` : null,
+    kSocCount   > 0 ? `${kSocCount} Kenya social/directory result${kSocCount > 1 ? 's' : ''}` : null,
+    kPhoneCount > 0 ? `${kPhoneCount} phone public mention${kPhoneCount > 1 ? 's' : ''}` : null,
+    webCount    > 0 ? `${webCount} web search result${webCount > 1 ? 's' : ''}` : null,
+    hasGravatar       ? 'Gravatar profile confirmed' : null,
+    breachCount > 0   ? `${breachCount} data breach${breachCount > 1 ? 'es' : ''}` : null,
+    hasCallerName     ? `caller ID: ${ph.reverse_lookup.caller_name}` : null,
+  ].filter(Boolean);
+
+  const identProse = [
+    t.name  ? `name <strong>${esc(t.name)}</strong>`  : null,
+    t.email ? `email <strong>${esc(t.email)}</strong>` : null,
+    t.phone ? `phone <strong>${esc(t.phone)}</strong>` : null,
+  ].filter(Boolean);
+
+  const execSummaryText = (identProse.length ? `Subject queried by ${identProse.join(', ')}. ` : '')
+    + (findings.length
+      ? `Intelligence gathering returned: ${findings.join('; ')}.`
+      : 'Intelligence gathering returned limited public results. The subject may have a low digital footprint or the queried identifiers did not match public records.');
+
+  // ── Local helpers ─────────────────────────────────────────
+  function docSec(num, icon, title, bodyHtml) {
+    return `<div class="doc-section">
+      <div class="doc-section-header">
+        <span class="doc-section-num">${num}</span>
+        <i class="fa-solid ${icon}"></i>
+        <span class="doc-section-title">${esc(title)}</span>
+      </div>
+      <div class="doc-section-body">${bodyHtml}</div>
+    </div>`;
+  }
+
+  function docKV(pairs) {
+    const rows = pairs.filter(Boolean).map(([k, v]) =>
+      `<div class="doc-kv-row"><span class="doc-kv-k">${esc(k)}</span><span class="doc-kv-v">${esc(String(v))}</span></div>`
+    );
+    return rows.length ? `<div class="doc-kv-table">${rows.join('')}</div>` : '';
+  }
+
+  function docResultList(results, emptyMsg) {
+    if (!results?.length) return `<p class="doc-empty">${esc(emptyMsg || 'No results found.')}</p>`;
+    return `<div class="doc-result-list">${results.map(r => `
+      <a href="${esc(r.url)}" target="_blank" rel="noopener" class="doc-result">
+        <div class="doc-result-title">${esc(r.title)}</div>
+        <div class="doc-result-url">${esc(r.display_url || r.url)}</div>
+        ${r.snippet ? `<div class="doc-result-snippet">${esc(r.snippet)}</div>` : ''}
+      </a>`).join('')}</div>`;
+  }
+
+  function docGHProfile(p) {
+    return `<div class="doc-profile">
+      <img src="${esc(p.avatar)}" class="doc-avatar" alt="${esc(p.username)}" onerror="this.style.display='none'" />
+      <div class="doc-profile-info">
+        <a href="${esc(p.url)}" target="_blank" rel="noopener" class="doc-profile-name">
+          <i class="fa-brands fa-github"></i> @${esc(p.username)}
+          ${p.name ? `<span class="doc-profile-realname">${esc(p.name)}</span>` : ''}
+        </a>
+        ${p.bio      ? `<div class="doc-profile-bio">${esc(p.bio)}</div>` : ''}
+        ${p.location ? `<div class="doc-profile-bio"><i class="fa-solid fa-location-dot"></i> ${esc(p.location)}</div>` : ''}
+        <div class="doc-profile-meta">
+          ${p.public_repos != null ? `<span><i class="fa-solid fa-book"></i> ${p.public_repos} repos</span>` : ''}
+          ${p.followers    != null ? `<span><i class="fa-solid fa-users"></i> ${p.followers} followers</span>` : ''}
+          ${p.email   ? `<span><i class="fa-solid fa-envelope"></i> ${esc(p.email)}</span>` : ''}
+          ${p.twitter ? `<span><i class="fa-brands fa-x-twitter"></i> @${esc(p.twitter)}</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // ── SECTION 1: Subject Identification ─────────────────────
+  let sec1 = '';
+  if (t.name) {
+    sec1 += `<div class="doc-subsection-title">Name</div>`;
+    sec1 += docKV([
+      ['Full Name', parts.full || t.name],
+      parts.first  ? ['First Name', parts.first]  : null,
+      parts.middle ? ['Middle Name', parts.middle] : null,
+      parts.last   ? ['Last Name', parts.last]     : null,
+    ]);
+    const na = nm.name_analysis;
+    if (na && (na.gender || na.age || na.nationalities?.length)) {
+      const demoPairs = [
+        na.gender ? ['Predicted Gender', `${na.gender.gender === 'male' ? '♂' : '♀'} ${na.gender.gender} (${na.gender.probability}% confidence, n=${Number(na.gender.sample_size||0).toLocaleString()})`] : null,
+        na.age    ? ['Predicted Age', `~${na.age.predicted_age} years (${Number(na.age.sample_size||0).toLocaleString()} records)`] : null,
+        na.nationalities?.length ? ['Name Origin', na.nationalities.slice(0,3).map(n => `${n.name} ${n.probability}%`).join(' · ')] : null,
+      ];
+      sec1 += `<div class="doc-subsection-title">Demographics (Statistical)</div>`;
+      sec1 += docKV(demoPairs);
+      sec1 += `<p class="doc-note"><i class="fa-solid fa-circle-info"></i> Predictions from genderize.io / agify.io / nationalize.io — statistical only.</p>`;
+    }
+  }
+
+  if (t.email) {
+    sec1 += `<div class="doc-subsection-title">Email Address</div>`;
+    sec1 += docKV([
+      ['Address', t.email],
+      em.domain   ? ['Domain', em.domain]     : null,
+      em.provider ? ['Provider', em.provider] : null,
+      em.username ? ['Username', em.username] : null,
+      ['Format Valid', em.valid ? '✓ Yes' : '✗ No'],
+      em.is_disposable ? ['Disposable', '⚠ Yes — temporary address'] : null,
+      em.is_corporate  ? ['Type', 'Corporate / Custom Domain'] : null,
+    ]);
+  }
+
+  if (t.phone) {
+    sec1 += `<div class="doc-subsection-title">Phone Number</div>`;
+    sec1 += docKV([
+      ['Number', ph.formats?.International || t.phone],
+      ph.country_name ? ['Country', ph.country_name] : null,
+      ph.location     ? ['Location', ph.location]    : null,
+      ph.carrier      ? ['Carrier', ph.carrier]      : null,
+      ph.line_type    ? ['Line Type', ph.line_type]  : null,
+      ph.timezones?.length ? ['Timezone', ph.timezones.join(', ')] : null,
+      ['Valid', ph.valid ? '✓ Yes' : (ph.partial ? 'Partial / Wildcard' : '✗ No')],
+    ]);
+  }
+
+  if (!sec1) sec1 = '<p class="doc-empty">No subject identifiers provided.</p>';
+
+  // ── SECTION 2: Digital Footprint ──────────────────────────
+  let sec2 = '';
+
+  const ghFound = (nm.github_profiles || []).filter(p => p.found);
+  if (ghFound.length) {
+    sec2 += `<div class="doc-subsection-title"><i class="fa-brands fa-github"></i> GitHub Profiles (${ghFound.length} found)</div>`;
+    sec2 += ghFound.map(docGHProfile).join('');
+  } else if (t.name) {
+    sec2 += `<div class="doc-empty-inline"><i class="fa-brands fa-github"></i> No GitHub profiles found for generated username patterns</div>`;
+  }
+
+  const rdFound = (nm.reddit_profiles || []).filter(p => p.found);
+  if (rdFound.length) {
+    sec2 += `<div class="doc-subsection-title"><i class="fa-brands fa-reddit"></i> Reddit Accounts (${rdFound.length} found)</div>`;
+    sec2 += rdFound.map(p => `<div class="doc-profile">
+      <div class="doc-avatar-placeholder"><i class="fa-brands fa-reddit"></i></div>
+      <div class="doc-profile-info">
+        <a href="${esc(p.url)}" target="_blank" rel="noopener" class="doc-profile-name">u/${esc(p.username)}</a>
+        <div class="doc-profile-meta">
+          ${p.karma != null ? `<span><i class="fa-solid fa-arrow-up"></i> ${Number(p.karma).toLocaleString()} karma</span>` : ''}
+          ${p.is_gold ? '<span><i class="fa-solid fa-star"></i> Gold</span>' : ''}
+        </div>
+      </div>
+    </div>`).join('');
+  } else if (t.name) {
+    sec2 += `<div class="doc-empty-inline"><i class="fa-brands fa-reddit"></i> No Reddit accounts found</div>`;
+  }
+
+  const kbFound = (nm.keybase_profiles || []).filter(p => p.found);
+  if (kbFound.length) {
+    sec2 += `<div class="doc-subsection-title"><i class="fa-solid fa-key"></i> Keybase Profiles (${kbFound.length} found)</div>`;
+    sec2 += kbFound.map(p => `<div class="doc-profile">
+      <div class="doc-avatar-placeholder"><i class="fa-solid fa-key"></i></div>
+      <div class="doc-profile-info">
+        <a href="${esc(p.url)}" target="_blank" rel="noopener" class="doc-profile-name">${esc(p.display_name || p.username)}</a>
+        ${p.full_name ? `<div class="doc-profile-bio">${esc(p.full_name)}</div>` : ''}
+        ${p.location  ? `<div class="doc-profile-bio"><i class="fa-solid fa-location-dot"></i> ${esc(p.location)}</div>` : ''}
+      </div>
+    </div>`).join('');
+  }
+
+  const devFound = (nm.devto_profiles || []).filter(p => p.found);
+  if (devFound.length) {
+    sec2 += `<div class="doc-subsection-title"><i class="fa-brands fa-dev"></i> DEV.to Profiles (${devFound.length} found)</div>`;
+    sec2 += devFound.map(p => `<div class="doc-profile">
+      ${p.profile_image ? `<img src="${esc(p.profile_image)}" class="doc-avatar" alt="${esc(p.username)}" />` : `<div class="doc-avatar-placeholder"><i class="fa-brands fa-dev"></i></div>`}
+      <div class="doc-profile-info">
+        <a href="${esc(p.url)}" target="_blank" rel="noopener" class="doc-profile-name">${esc(p.name || p.username)}</a>
+        ${p.summary  ? `<div class="doc-profile-bio">${esc(p.summary)}</div>` : ''}
+        ${p.location ? `<div class="doc-profile-bio"><i class="fa-solid fa-location-dot"></i> ${esc(p.location)}</div>` : ''}
+        <div class="doc-profile-meta">
+          ${p.github_username  ? `<span><i class="fa-brands fa-github"></i> ${esc(p.github_username)}</span>` : ''}
+          ${p.twitter_username ? `<span><i class="fa-brands fa-x-twitter"></i> @${esc(p.twitter_username)}</span>` : ''}
+        </div>
+      </div>
+    </div>`).join('');
+  }
+
+  const mastoFound = (nm.mastodon_accounts || []).filter(a => a.found);
+  if (mastoFound.length) {
+    sec2 += `<div class="doc-subsection-title"><i class="fa-brands fa-mastodon"></i> Mastodon Accounts (${mastoFound.length} found)</div>`;
+    sec2 += mastoFound.map(a => `<div class="doc-profile">
+      ${a.avatar ? `<img src="${esc(a.avatar)}" class="doc-avatar" alt="${esc(a.username)}" />` : `<div class="doc-avatar-placeholder"><i class="fa-brands fa-mastodon"></i></div>`}
+      <div class="doc-profile-info">
+        <a href="${esc(a.url)}" target="_blank" rel="noopener" class="doc-profile-name">@${esc(a.username)}</a>
+        ${a.display_name ? `<div class="doc-profile-bio">${esc(a.display_name)}</div>` : ''}
+        ${a.bio          ? `<div class="doc-profile-bio">${esc(a.bio)}</div>`          : ''}
+        <div class="doc-profile-meta">
+          ${a.followers != null ? `<span><i class="fa-solid fa-users"></i> ${Number(a.followers).toLocaleString()} followers</span>` : ''}
+          ${a.statuses  != null ? `<span><i class="fa-solid fa-comment"></i> ${Number(a.statuses).toLocaleString()} posts</span>` : ''}
+        </div>
+      </div>
+    </div>`).join('');
+  }
+
+  const wikiResults = nm.wikipedia?.results || [];
+  if (wikiResults.length) {
+    sec2 += `<div class="doc-subsection-title"><i class="fa-brands fa-wikipedia-w"></i> Wikipedia Results (${wikiResults.length})</div>`;
+    sec2 += `<div class="doc-result-list">${wikiResults.map(r => `
+      <a href="${esc(r.url)}" target="_blank" rel="noopener" class="doc-result">
+        <div class="doc-result-title"><i class="fa-brands fa-wikipedia-w"></i> ${esc(r.title)}</div>
+        ${r.snippet ? `<div class="doc-result-snippet">${esc(r.snippet)}…</div>` : ''}
+      </a>`).join('')}</div>`;
+  }
+
+  if (!sec2 && !t.name) sec2 = '<p class="doc-empty">No name provided — digital footprint search not performed.</p>';
+  if (!sec2) sec2 = '<p class="doc-empty">No profiles found across queried platforms.</p>';
+
+  // ── SECTION 3: Kenya Intelligence ─────────────────────────
+  let sec3 = '';
+  if (nm.kenya_intel?.news?.results?.length) {
+    sec3 += `<div class="doc-subsection-title"><i class="fa-newspaper"></i> Kenya News Mentions (${nm.kenya_intel.news.results.length})</div>`;
+    sec3 += docResultList(nm.kenya_intel.news.results);
+  }
+  if (nm.kenya_intel?.social_dirs?.results?.length) {
+    sec3 += `<div class="doc-subsection-title"><i class="fa-earth-africa"></i> Kenya Social & Directory Results (${nm.kenya_intel.social_dirs.results.length})</div>`;
+    sec3 += docResultList(nm.kenya_intel.social_dirs.results);
+  }
+  if (ph.kenya_phone_mentions?.results?.length) {
+    sec3 += `<div class="doc-subsection-title"><i class="fa-phone"></i> Phone Number Public Mentions — Kenya (${ph.kenya_phone_mentions.results.length})</div>`;
+    sec3 += docResultList(ph.kenya_phone_mentions.results);
+  }
+  if (!sec3) sec3 = `<p class="doc-empty">${(t.name || t.phone) ? 'No Kenyan public records or mentions found for the provided identifiers.' : 'No name or phone provided for Kenya intelligence search.'}</p>`;
+
+  // ── SECTION 4: Web Intelligence ───────────────────────────
+  let sec4 = '';
+  const allWebResults = [
+    ...(nm.web_intel?.bing?.results || []),
+    ...(em.web_intel?.bing?.results || []),
+    ...(ph.web_intel?.bing?.results || []),
+  ];
+
+  const ddgAbstract = nm.web_intel?.ddg?.abstract;
+  if (ddgAbstract) {
+    sec4 += `<div class="doc-abstract">
+      <div class="doc-abstract-text">${esc(ddgAbstract)}</div>
+      ${nm.web_intel.ddg.abstract_source ? `<div class="doc-abstract-src">Source: ${esc(nm.web_intel.ddg.abstract_source)}</div>` : ''}
+    </div>`;
+  }
+
+  const ddgFacts = nm.web_intel?.ddg?.facts;
+  if (ddgFacts?.length) {
+    sec4 += `<div class="doc-subsection-title">Quick Facts</div>`;
+    sec4 += `<div class="doc-kv-table">${ddgFacts.map(f =>
+      `<div class="doc-kv-row"><span class="doc-kv-k">${esc(f.label)}</span><span class="doc-kv-v">${esc(f.value)}</span></div>`
+    ).join('')}</div>`;
+  }
+
+  if (allWebResults.length) {
+    sec4 += `<div class="doc-subsection-title">Web Results (${allWebResults.length} total via DuckDuckGo)</div>`;
+    sec4 += docResultList(allWebResults);
+  } else {
+    sec4 += '<p class="doc-empty">No web results returned. Subject may have a low public online presence.</p>';
+  }
+
+  // ── SECTION 5: Email Intelligence ─────────────────────────
+  let sec5 = '';
+  if (!t.email) {
+    sec5 = '<p class="doc-empty">No email address provided.</p>';
+  } else {
+    const er = em.email_rep;
+    if (er && !er.error) {
+      const repColor = er.reputation === 'high' ? '#10b981' : er.reputation === 'medium' ? '#f59e0b' : '#ef4444';
+      sec5 += `<div class="doc-subsection-title">Email Reputation (emailrep.io)</div>`;
+      sec5 += `<div class="doc-rep-banner" style="border-color:${repColor}">
+        <span class="doc-rep-score" style="color:${repColor}">${esc(String(er.reputation || 'unknown').toUpperCase())} REPUTATION</span>
+        <span class="doc-rep-flag">${er.suspicious ? '⚠ Suspicious' : '✓ Not suspicious'}</span>
+      </div>`;
+      sec5 += docKV([
+        er.references != null  ? ['References', String(er.references)]              : null,
+        er.first_seen          ? ['First Seen', String(er.first_seen)]              : null,
+        er.last_seen           ? ['Last Seen', String(er.last_seen)]                : null,
+        er.deliverable != null ? ['Deliverable', er.deliverable ? '✓ Yes' : '✗ No'] : null,
+        er.data_breach         ? ['Data Breach', '⚠ Yes']                           : null,
+        er.credentials_leaked  ? ['Credentials Leaked', '⚠ Yes']                   : null,
+        er.malicious_activity  ? ['Malicious Activity', '⚠ Yes']                   : null,
+        er.spam                ? ['Spam', '⚠ Associated with spam']                 : null,
+        er.blacklisted         ? ['Blacklisted', '⚠ Yes']                           : null,
+      ]);
+      const erProfiles = Array.isArray(er.profiles) ? er.profiles : [];
+      if (erProfiles.length) {
+        sec5 += `<div class="doc-subsection-title">Linked Profiles (via EmailRep)</div>`;
+        sec5 += `<div class="doc-tag-list">${erProfiles.map(p => `<span class="doc-tag">${esc(String(p))}</span>`).join('')}</div>`;
+      }
+    } else if (er?.error) {
+      sec5 += `<div class="doc-empty-inline"><i class="fa-solid fa-circle-info"></i> EmailRep: ${esc(String(er.error))}</div>`;
+    } else {
+      sec5 += `<div class="doc-empty-inline"><i class="fa-solid fa-circle-info"></i> EmailRep unavailable (10 req/day free limit)</div>`;
+    }
+
+    const g = em.gravatar;
+    if (g?.exists) {
+      sec5 += `<div class="doc-subsection-title">Gravatar</div>`;
+      sec5 += `<div class="doc-profile">
+        <img src="${esc(g.avatar_url)}" class="doc-avatar" alt="Gravatar" />
+        <div class="doc-profile-info">
+          <a href="${esc(g.profile_url)}" target="_blank" rel="noopener" class="doc-profile-name">Gravatar Profile Found</a>
+          <div class="doc-profile-bio">MD5: <code>${esc(g.hash)}</code></div>
+        </div>
+      </div>`;
+    } else if (g) {
+      sec5 += `<div class="doc-empty-inline"><i class="fa-solid fa-user-slash"></i> No Gravatar profile (MD5: ${esc(g.hash)})</div>`;
+    }
+
+    const breach = em.breach_data;
+    if (!breach?.configured) {
+      sec5 += `<div class="doc-empty-inline"><i class="fa-solid fa-key"></i> HIBP breach check not configured — set HIBP_API_KEY</div>`;
+    } else if (breach.breached) {
+      sec5 += `<div class="doc-subsection-title">Data Breaches (HaveIBeenPwned) — ${breach.count} found</div>`;
+      sec5 += `<div class="doc-breach-list">${breach.breaches.map(br => `
+        <div class="doc-breach-item">
+          <div class="doc-breach-name"><i class="fa-solid fa-database"></i> ${esc(br.name)}</div>
+          <div class="doc-breach-date">Breach date: ${esc(br.date)}</div>
+          ${br.data_classes?.length ? `<div class="doc-tag-list" style="margin-top:4px">${br.data_classes.map(dc => `<span class="doc-tag doc-tag-red">${esc(dc)}</span>`).join('')}</div>` : ''}
+        </div>`).join('')}</div>`;
+    } else if (!breach.error) {
+      sec5 += `<div class="doc-empty-inline"><i class="fa-solid fa-shield-halved" style="color:#10b981"></i> No breaches found in HaveIBeenPwned database</div>`;
+    }
+
+    const mx = em.mx_records;
+    if (mx?.records?.length) {
+      const mxPairs = mx.records.map(r => [`MX Priority ${r.priority}`, r.exchange]);
+      const txt = em.txt_records || {};
+      if (txt.spf)   mxPairs.push(['SPF', txt.spf]);
+      if (txt.dmarc) mxPairs.push(['DMARC', txt.dmarc]);
+      sec5 += `<div class="doc-subsection-title">DNS / Mail Records</div>${docKV(mxPairs)}`;
+    }
+
+    const w = em.whois;
+    if (w && !w.error && !w.note) {
+      const wPairs = [
+        w.registrar      ? ['Registrar', w.registrar]         : null,
+        w.organization   ? ['Organization', w.organization]   : null,
+        w.country        ? ['Country', w.country]             : null,
+        w.creation_date  ? ['Created', w.creation_date]       : null,
+        w.expiration_date ? ['Expires', w.expiration_date]    : null,
+      ];
+      if (wPairs.some(Boolean)) sec5 += `<div class="doc-subsection-title">Domain WHOIS</div>${docKV(wPairs)}`;
+    }
+  }
+
+  // ── SECTION 6: Phone Intelligence ─────────────────────────
+  let sec6 = '';
+  if (!t.phone) {
+    sec6 = '<p class="doc-empty">No phone number provided.</p>';
+  } else {
+    const rev = ph.reverse_lookup ?? {};
+    const nv  = ph.numverify ?? {};
+
+    if (rev.configured) {
+      if (rev.caller_name) {
+        sec6 += `<div class="doc-subsection-title">Caller ID / Reverse Lookup (Twilio)</div>`;
+        sec6 += docKV([
+          ['Caller Name', String(rev.caller_name)],
+          rev.caller_type ? ['Name Type', rev.caller_type === 'CONSUMER' ? 'Consumer (individual)' : rev.caller_type === 'BUSINESS' ? 'Business' : String(rev.caller_type)] : null,
+          rev.carrier_name ? ['Carrier (live)', String(rev.carrier_name)] : null,
+          rev.line_type    ? ['Line Type (live)', String(rev.line_type)]  : null,
+          rev.mobile_country_code ? ['MCC', String(rev.mobile_country_code)] : null,
+          rev.mobile_network_code ? ['MNC', String(rev.mobile_network_code)] : null,
+        ]);
+      } else {
+        sec6 += `<div class="doc-empty-inline"><i class="fa-solid fa-address-card"></i> No CNAM record — number may be unlisted</div>`;
+        if (rev.carrier_name) sec6 += docKV([['Carrier (live)', String(rev.carrier_name)], rev.line_type ? ['Line Type (live)', String(rev.line_type)] : null]);
+      }
+    } else if (!nv.configured) {
+      sec6 += `<div class="doc-empty-inline"><i class="fa-solid fa-key"></i> Caller ID not configured — set TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN or NUMVERIFY_API_KEY</div>`;
+    }
+
+    if (nv.configured && !nv.error) {
+      const nvPairs = [
+        nv.location  ? ['Location (NumVerify)', String(nv.location)]  : null,
+        nv.carrier   ? ['Carrier (NumVerify)', String(nv.carrier)]    : null,
+        nv.line_type ? ['Line Type (NumVerify)', String(nv.line_type)] : null,
+      ];
+      if (nvPairs.some(Boolean)) sec6 += `<div class="doc-subsection-title">NumVerify Enrichment</div>${docKV(nvPairs)}`;
+    }
+
+    if (ph.formats) {
+      sec6 += `<div class="doc-subsection-title">Number Formats</div>`;
+      sec6 += docKV(Object.entries(ph.formats).map(([k, v]) => [k, v]));
+    }
+  }
+
+  // ── SECTION 7: Cross-Reference ────────────────────────────
+  let sec7 = '';
   if (cr.notes?.length) {
-    crContent += `<div class="note-list">${cr.notes.map(n =>
-      `<div class="note-item"><i class="fa-solid fa-lightbulb"></i>${esc(n)}</div>`).join('')}</div>`;
+    sec7 += `<div class="doc-subsection-title">Cross-Reference Notes</div>`;
+    sec7 += `<ul class="doc-note-list">${cr.notes.map(n => `<li><i class="fa-solid fa-lightbulb"></i> ${esc(n)}</li>`).join('')}</ul>`;
   }
-  if (cr.search_links && Object.keys(cr.search_links).length) {
-    crContent += `<div style="margin-top:10px"><div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px">Combined Search</div>${buildLinkList(cr.search_links)}</div>`;
+  const identsUsed = [t.name, t.email, t.phone].filter(Boolean);
+  sec7 += `<div class="doc-subsection-title">Identifiers Used</div>`;
+  sec7 += docKV(identsUsed.map((id, i) => [`Identifier ${i + 1}`, id]));
+  if (!cr.notes?.length && identsUsed.length < 2) {
+    sec7 += `<p class="doc-note"><i class="fa-solid fa-circle-info"></i> Provide two or more identifiers for cross-reference correlation.</p>`;
   }
-  if (cr.google_dorks && Object.keys(cr.google_dorks).length) {
-    crContent += `<div style="margin-top:10px"><div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px">Cross-Reference Dorks</div>${buildLinkList(cr.google_dorks)}</div>`;
-  }
-  if (!crContent) {
-    crContent = `<div class="no-data"><i class="fa-solid fa-circle-info"></i>Provide two or more identifiers (name, email, phone) for cross-reference links.</div>`;
-  }
-  grid.appendChild(card('Cross-Reference', 'fa-link', 'icon-orange', crContent));
 
-  // Sub-reports
-  if (d.name)  appendSubReport(grid, 'Name Report', 'fa-user', d.name, renderName);
-  if (d.email) appendSubReport(grid, 'Email Report', 'fa-envelope', d.email, renderEmail);
-  if (d.phone) appendSubReport(grid, 'Phone Report', 'fa-phone', d.phone, renderPhone);
-}
+  // ── SECTION 8: Methodology ────────────────────────────────
+  const sources = [
+    { name: 'GitHub API',                       what: 'Profile lookup by generated username patterns',                                                                                                           found: ghCount > 0,            skip: !t.name },
+    { name: 'Reddit API',                        what: 'Account existence check by username',                                                                                                                      found: rdCount > 0,            skip: !t.name },
+    { name: 'Keybase API',                       what: 'Profile lookup by username',                                                                                                                               found: kbCount > 0,            skip: !t.name },
+    { name: 'DEV.to API',                        what: 'Profile lookup by username',                                                                                                                               found: devtoCount > 0,         skip: !t.name },
+    { name: 'Mastodon API (mastodon.social)',     what: 'Account search by name',                                                                                                                                  found: mastoCount > 0,         skip: !t.name },
+    { name: 'Wikipedia API',                     what: 'Full-text search by name',                                                                                                                                 found: wikiCount > 0,          skip: !t.name },
+    { name: 'DuckDuckGo Instant Answer',         what: 'Abstract / infobox / quick facts',                                                                                                                        found: !!(nm.web_intel?.ddg?.abstract) },
+    { name: 'DuckDuckGo HTML Search (Name)',     what: 'Open web results for name query',                                                                                                                         found: (nm.web_intel?.bing?.results?.length || 0) > 0, skip: !t.name },
+    { name: 'DuckDuckGo HTML Search (Email)',    what: 'Open web results for email query',                                                                                                                        found: (em.web_intel?.bing?.results?.length || 0) > 0, skip: !t.email },
+    { name: 'DuckDuckGo HTML Search (Phone)',    what: 'Open web results for phone query',                                                                                                                        found: (ph.web_intel?.bing?.results?.length || 0) > 0, skip: !t.phone },
+    { name: 'Kenya News Sites (DDG scrape)',      what: 'Nation, Standard, Tuko, The Star, Citizen, Business Daily, KBC, Capital FM',                                                                             found: kNewsCount > 0,         skip: !t.name },
+    { name: 'Kenya Social & Directories',        what: 'Twitter/X, Facebook, LinkedIn, Instagram, TikTok, Yellow Pages KE, PigiaMe, Jiji, BrighterMonday, eCitizen, Judiciary, M-Changa',                       found: kSocCount > 0,          skip: !t.name },
+    { name: 'Kenya Phone Mentions',              what: 'Public mentions of phone number in Kenyan web sources',                                                                                                   found: kPhoneCount > 0,        skip: !t.phone || !ph.kenya_phone_mentions },
+    { name: 'Gravatar',                          what: 'Avatar and profile lookup by email MD5 hash',                                                                                                             found: hasGravatar,             skip: !t.email },
+    { name: 'HaveIBeenPwned (HIBP)',             what: 'Data breach check by email address',                                                                                                                      found: breachCount > 0,        skip: !t.email || !em.breach_data?.configured },
+    { name: 'EmailRep.io',                       what: 'Email reputation, history, and linked profiles',                                                                                                          found: hasEmailRep,             skip: !t.email },
+    { name: 'DNS (MX, SPF, DMARC)',              what: 'Mail server and domain record lookup',                                                                                                                    found: hasMX,                   skip: !t.email },
+    { name: 'WHOIS',                             what: 'Domain registration information',                                                                                                                         found: !!(em.whois && !em.whois.error && !em.whois.note), skip: !t.email },
+    { name: 'Twilio Lookup API',                 what: 'Caller ID (CNAM) and live carrier lookup',                                                                                                                found: hasCallerName,           skip: !t.phone || !ph.reverse_lookup?.configured },
+    { name: 'NumVerify API',                     what: 'Phone number enrichment and carrier data',                                                                                                                found: !!(ph.numverify?.carrier), skip: !t.phone || !ph.numverify?.configured },
+    { name: 'genderize.io',                      what: 'Predicted gender from first name (statistical)',                                                                                                          found: !!(nm.name_analysis?.gender),            skip: !t.name },
+    { name: 'agify.io',                          what: 'Predicted age from first name (statistical)',                                                                                                             found: !!(nm.name_analysis?.age),               skip: !t.name },
+    { name: 'nationalize.io',                    what: 'Predicted nationality from first name (statistical)',                                                                                                     found: !!(nm.name_analysis?.nationalities?.length), skip: !t.name },
+  ].filter(s => !s.skip);
 
-function appendSubReport(grid, title, iconCls, data, renderFn) {
-  const divider = document.createElement('div');
-  divider.className = 'hybrid-section-divider';
-  divider.innerHTML = `<i class="fa-solid ${esc(iconCls)}"></i> <span>${esc(title)}</span>`;
-  grid.appendChild(divider);
+  const sec8 = `<div class="doc-method-list">${sources.map((s, i) => `
+    <div class="doc-method-item">
+      <span class="doc-method-num">${i + 1}</span>
+      <div class="doc-method-body">
+        <div class="doc-method-name">${esc(s.name)}</div>
+        <div class="doc-method-what">${esc(s.what)}</div>
+      </div>
+      <span class="${s.found ? 'doc-found' : 'doc-not-found'}">${s.found ? '✓ Found' : '— None'}</span>
+    </div>`).join('')}</div>`;
 
-  const dummyTarget = document.createElement('div');
-  renderFn(data, dummyTarget, grid);
+  // ── Further Research ──────────────────────────────────────
+  const researchSections = [];
+  if (nm.username_profile_links) {
+    const flat = {};
+    for (const [un, links] of Object.entries(nm.username_profile_links).slice(0, 5)) {
+      for (const [platform, url] of Object.entries(links)) flat[`${platform} (@${un})`] = url;
+    }
+    if (Object.keys(flat).length) researchSections.push({ title: 'Name — Profile Links by Username', links: flat });
+  }
+  if (nm.search_links) researchSections.push({ title: 'Name — Search Links', links: nm.search_links });
+  if (nm.google_dorks) researchSections.push({ title: 'Name — Google Dorks', links: nm.google_dorks });
+  if (em.search_links) researchSections.push({ title: 'Email — Search Links', links: em.search_links });
+  if (ph.search_links) researchSections.push({ title: 'Phone — Search Links', links: ph.search_links });
+  if (cr.search_links) researchSections.push({ title: 'Cross-Reference — Combined Search', links: cr.search_links });
+  if (cr.google_dorks) researchSections.push({ title: 'Cross-Reference — Google Dorks', links: cr.google_dorks });
+
+  // ── Assemble document ─────────────────────────────────────
+  const doc = document.createElement('div');
+  doc.className = 'osint-doc';
+  doc.innerHTML = `
+    <div class="doc-exec-summary">
+      <div class="doc-exec-label"><i class="fa-solid fa-bullseye"></i> Executive Summary</div>
+      <div class="doc-exec-text">${execSummaryText}</div>
+    </div>
+    ${docSec(1, 'fa-id-card',            'Subject Identification',   sec1)}
+    ${docSec(2, 'fa-fingerprint',        'Digital Footprint',        sec2)}
+    ${docSec(3, 'fa-earth-africa',       'Kenya Intelligence',       sec3)}
+    ${docSec(4, 'fa-globe',              'Web Intelligence',         sec4)}
+    ${docSec(5, 'fa-envelope-open-text', 'Email Intelligence',       sec5)}
+    ${docSec(6, 'fa-phone-volume',       'Phone Intelligence',       sec6)}
+    ${docSec(7, 'fa-link',              'Cross-Reference Findings',  sec7)}
+    ${docSec(8, 'fa-microscope',         'Methodology',              sec8)}
+  `;
+  grid.appendChild(doc);
+
+  const researchEl = furtherResearch(researchSections);
+  if (researchEl) {
+    researchEl.style.gridColumn = '1 / -1';
+    grid.appendChild(researchEl);
+  }
 }
 
 // ── Helpers ──────────────────────────────────────────────────
