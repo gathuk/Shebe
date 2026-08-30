@@ -569,7 +569,11 @@ async function checkBingSearch(query: string): Promise<Record<string, unknown>> 
 
 // ── Kenya-specific OSINT ─────────────────────────────────────────────────────
 
-async function searchKenyaIntel(name: string): Promise<{ news: Record<string, unknown>; social_dirs: Record<string, unknown> }> {
+async function searchKenyaIntel(name: string): Promise<{
+  news: Record<string, unknown>;
+  social_dirs: Record<string, unknown>;
+  gov: Record<string, unknown>;
+}> {
   const q = (suffix: string) => `"${name}" ${suffix}`;
 
   // Major Kenyan news outlets
@@ -579,23 +583,172 @@ async function searchKenyaIntel(name: string): Promise<{ news: Record<string, un
     "site:kbc.co.ke OR site:nairobinews.nation.africa OR site:capitalfm.co.ke"
   );
 
-  // Kenyan social media (with Kenya context) + classifieds + business registries
+  // Kenyan social media (Kenya-context) + classifieds + marketplace
   const socialDirQuery = q(
     "(site:twitter.com OR site:facebook.com OR site:linkedin.com OR site:instagram.com OR site:tiktok.com) Kenya OR Nairobi " +
     "OR site:yellowpages.co.ke OR site:pigiame.co.ke OR site:jiji.co.ke OR " +
-    "site:brightermonday.co.ke OR site:myjobmag.co.ke OR site:efts.ecitizen.go.ke OR " +
-    "site:judiciary.go.ke OR site:mchanga.africa"
+    "site:brightermonday.co.ke OR site:myjobmag.co.ke OR site:mchanga.africa OR site:jumia.co.ke"
   );
 
-  const [news, socialDirs] = await Promise.allSettled([
+  // Kenya government & institutional registries
+  const govQuery = q(
+    "site:ntsa.go.ke OR site:brs.go.ke OR site:kra.go.ke OR site:lsk.or.ke OR " +
+    "site:kmpdb.or.ke OR site:kenyagazette.go.ke OR site:mygov.go.ke OR " +
+    "site:kacc.go.ke OR site:nema.go.ke OR site:nhif.or.ke OR site:nssf.or.ke OR " +
+    "site:judiciary.go.ke OR site:efts.ecitizen.go.ke OR site:ipkenya.go.ke"
+  );
+
+  const [news, socialDirs, gov] = await Promise.allSettled([
     scrapeDuckDuckGoHtml(newsQuery),
     scrapeDuckDuckGoHtml(socialDirQuery),
+    scrapeDuckDuckGoHtml(govQuery),
   ]);
 
   return {
-    news:        news.status === "fulfilled"       ? news.value       : { configured: true, results: [] },
-    social_dirs: socialDirs.status === "fulfilled" ? socialDirs.value : { configured: true, results: [] },
+    news:        news.status        === "fulfilled" ? news.value        : { configured: true, results: [] },
+    social_dirs: socialDirs.status  === "fulfilled" ? socialDirs.value  : { configured: true, results: [] },
+    gov:         gov.status         === "fulfilled" ? gov.value         : { configured: true, results: [] },
   };
+}
+
+// Social platform profile searches (global, not Kenya-specific)
+async function searchSocialProfiles(name: string): Promise<{
+  linkedin:  Record<string, unknown>;
+  instagram: Record<string, unknown>;
+  facebook:  Record<string, unknown>;
+  tiktok:    Record<string, unknown>;
+}> {
+  const [linkedin, instagram, facebook, tiktok] = await Promise.allSettled([
+    scrapeDuckDuckGoHtml(`"${name}" site:linkedin.com/in`),
+    scrapeDuckDuckGoHtml(`"${name}" site:instagram.com`),
+    scrapeDuckDuckGoHtml(`"${name}" site:facebook.com`),
+    scrapeDuckDuckGoHtml(`"${name}" site:tiktok.com`),
+  ]);
+  return {
+    linkedin:  linkedin.status  === "fulfilled" ? linkedin.value  : { results: [] },
+    instagram: instagram.status === "fulfilled" ? instagram.value : { results: [] },
+    facebook:  facebook.status  === "fulfilled" ? facebook.value  : { results: [] },
+    tiktok:    tiktok.status    === "fulfilled" ? tiktok.value    : { results: [] },
+  };
+}
+
+// Detect conflicting signals across gathered data sources
+function detectConflicts(
+  nameRes: Record<string, unknown> | null,
+  emailRes: Record<string, unknown> | null,
+  phoneRes: Record<string, unknown> | null,
+): Array<Record<string, unknown>> {
+  const conflicts: Array<Record<string, unknown>> = [];
+
+  // 1. Phone country vs name nationality mismatch
+  if (phoneRes && nameRes) {
+    const phoneRegion = String(phoneRes["region_code"] ?? "");
+    const nats = (((nameRes["name_analysis"] as Record<string, unknown>)?.["nationalities"] ?? []) as Array<{code: string; name: string; probability: number}>);
+    if (phoneRegion && nats.length > 0) {
+      const top = nats[0];
+      // Only flag if probability is high and countries genuinely differ
+      const diasporaNeutral = ["US", "GB", "CA", "AU", "NL", "AE"]; // common expat hubs, mismatch expected
+      if (top.probability >= 65 && top.code !== phoneRegion && !diasporaNeutral.includes(top.code)) {
+        conflicts.push({
+          id: "geographic_mismatch",
+          type: "geographic_mismatch",
+          severity: "info",
+          description: `Phone registered in ${String(phoneRes["country_name"])} (${phoneRegion}), but the name statistically associates most with ${top.name} (${top.probability}% probability).`,
+          note: "May indicate diaspora, use of a foreign SIM, or a limitation of name-origin statistical models.",
+          options: [
+            { value: "phone",   label: `Trust phone — subject is ${String(phoneRes["country_name"])}-based` },
+            { value: "name",    label: `Trust name origin — subject is ${top.name}-based` },
+            { value: "both",    label: "Both plausible — diaspora or international" },
+          ],
+        });
+      }
+    }
+  }
+
+  // 2. EmailRep says "no breach" but HIBP says "breached"
+  if (emailRes) {
+    const er = (emailRes["email_rep"] ?? {}) as Record<string, unknown>;
+    const br = (emailRes["breach_data"] ?? {}) as Record<string, unknown>;
+    if (!er["error"] && er["data_breach"] === false && br["configured"] && br["breached"]) {
+      const cnt = Number(br["count"] ?? 0);
+      conflicts.push({
+        id: "breach_data_mismatch",
+        type: "data_discrepancy",
+        severity: "medium",
+        description: `EmailRep.io reports no breach history, but HIBP found ${cnt} breach${cnt !== 1 ? "es" : ""} for this address.`,
+        note: "HIBP is the authoritative source for data breach data — their database is more comprehensive.",
+        options: [
+          { value: "trust_hibp",     label: `Trust HIBP — ${cnt} breach${cnt !== 1 ? "es" : ""} confirmed` },
+          { value: "trust_emailrep", label: "Trust EmailRep — no breach" },
+          { value: "note_both",      label: "Note the discrepancy — sources disagree" },
+        ],
+      });
+    }
+  }
+
+  // 3. Multiple GitHub profiles with different locations/identities
+  if (nameRes) {
+    const ghFound = ((nameRes["github_profiles"] ?? []) as Array<Record<string, unknown>>).filter(p => p["found"] === true);
+    if (ghFound.length > 1) {
+      const locs = [...new Set(ghFound.filter(p => p["location"]).map(p => String(p["location"])))];
+      if (locs.length > 1) {
+        conflicts.push({
+          id: "multiple_github_profiles",
+          type: "identity_ambiguity",
+          severity: "info",
+          description: `${ghFound.length} GitHub profiles matched generated username patterns, showing different locations: ${locs.join(", ")}.`,
+          note: "Common username patterns may match multiple unrelated individuals. Review each profile to determine which is the subject.",
+          options: ghFound.slice(0, 4).map(p => ({
+            value: String(p["username"]),
+            label: `@${p["username"]}${p["name"] ? ` ("${p["name"]}")` : ""}${p["location"] ? ` — ${p["location"]}` : ""}`,
+          })),
+        });
+      }
+    }
+  }
+
+  // 4. Kenyan email domain vs non-Kenyan phone
+  if (emailRes && phoneRes) {
+    const domain = String(emailRes["domain"] ?? "");
+    const phoneRegion = String(phoneRes["region_code"] ?? "");
+    const isKenyanEmail = [".co.ke", ".go.ke", ".ac.ke", ".or.ke"].some(s => domain.endsWith(s));
+    if (isKenyanEmail && phoneRegion && phoneRegion !== "KE") {
+      conflicts.push({
+        id: "email_country_vs_phone_country",
+        type: "geographic_mismatch",
+        severity: "info",
+        description: `Email domain is Kenyan (.ke TLD) but phone number is registered in ${String(phoneRes["country_name"])}.`,
+        note: "The subject may operate across both countries, or one identifier may belong to a different person.",
+        options: [
+          { value: "kenya",        label: "Subject is Kenya-based (email domain primary)" },
+          { value: "phone_country", label: `Subject is ${String(phoneRes["country_name"])}-based (phone primary)` },
+          { value: "both",         label: "Subject operates in both countries" },
+        ],
+      });
+    }
+  }
+
+  // 5. Email reputation "high" but HIBP shows active breaches
+  if (emailRes) {
+    const er = (emailRes["email_rep"] ?? {}) as Record<string, unknown>;
+    const br = (emailRes["breach_data"] ?? {}) as Record<string, unknown>;
+    if (!er["error"] && er["reputation"] === "high" && br["configured"] && br["breached"] && Number(br["count"]) >= 3) {
+      const cnt = Number(br["count"]);
+      conflicts.push({
+        id: "reputation_vs_breach_count",
+        type: "data_discrepancy",
+        severity: "low",
+        description: `EmailRep.io rates this address as "high reputation", but it appears in ${cnt} data breaches.`,
+        note: "High EmailRep reputation reflects established usage patterns; breach presence is independent of reputation.",
+        options: [
+          { value: "accept",  label: "Accept: long-standing address, simply exposed in breaches" },
+          { value: "caution", label: "Flag: high breach count warrants caution despite reputation" },
+        ],
+      });
+    }
+  }
+
+  return conflicts;
 }
 
 // ── Reverse Phone Lookup ─────────────────────────────────────────────────────
@@ -1058,7 +1211,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
   const parts = parseName(name);
   const usernames = generateUsernames(parts);
 
-  const [githubResults, redditResults, keybaseResults, devtoResults, mastodonResults, wikipedia, ddg, bing, nameAnalysis, kenyaIntel] = await Promise.all([
+  const [githubResults, redditResults, keybaseResults, devtoResults, mastodonResults, wikipedia, ddg, bing, nameAnalysis, kenyaIntel, socialProfiles] = await Promise.all([
     checkGithub(usernames),
     checkReddit(usernames),
     checkKeybase(usernames),
@@ -1069,6 +1222,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
     checkBingSearch(name),
     checkNameAnalysis(parts.first || name),
     searchKenyaIntel(name),
+    searchSocialProfiles(name),
   ]);
 
   const foundCount = githubResults.filter((r) => r["found"] === true).length;
@@ -1129,6 +1283,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
     wikipedia,
     name_analysis: nameAnalysis,
     kenya_intel: kenyaIntel,
+    social_profiles: socialProfiles,
     web_intel: { ddg, bing },
     search_links: {
       "Google (full name)": `https://www.google.com/search?q=${encodedFull}`,
@@ -1236,12 +1391,15 @@ async function gatherHybrid(input: { name?: string; email?: string; phone?: stri
   if (email && phone) matchSignals.push("Email and phone both provided — look for accounts that expose both (e.g. marketplace listings)");
   if (name && email && phone) matchSignals.push("All three identifiers provided — highest accuracy; prioritize sources that corroborate all three");
 
+  const conflicts = detectConflicts(nameResult, emailResult, phoneResult);
+
   return {
     target: { name: name || null, email: email || null, phone: phone || null },
     valid: true,
     name: nameResult,
     email: emailResult,
     phone: phoneResult,
+    conflicts,
     cross_reference: {
       identifiers_used: terms.length,
       notes: matchSignals,

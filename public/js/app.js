@@ -1073,6 +1073,21 @@ function renderOsintDoc(d, targetEl, grid) {
       </a>`).join('')}</div>`;
   }
 
+  // Social platform DDG results
+  const sp = nm.social_profiles || {};
+  [
+    { key: 'linkedin',  icon: 'fa-brands fa-linkedin',  label: 'LinkedIn' },
+    { key: 'instagram', icon: 'fa-brands fa-instagram',  label: 'Instagram' },
+    { key: 'facebook',  icon: 'fa-brands fa-facebook',   label: 'Facebook' },
+    { key: 'tiktok',    icon: 'fa-brands fa-tiktok',     label: 'TikTok' },
+  ].forEach(({ key, icon, label }) => {
+    const r = (sp[key] || {}).results || [];
+    if (r.length) {
+      sec2 += `<div class="doc-subsection-title"><i class="${icon}"></i> ${label} Results (${r.length})</div>`;
+      sec2 += docResultList(r);
+    }
+  });
+
   if (!sec2 && !t.name) sec2 = '<p class="doc-empty">No name provided — digital footprint search not performed.</p>';
   if (!sec2) sec2 = '<p class="doc-empty">No profiles found across queried platforms.</p>';
 
@@ -1085,6 +1100,11 @@ function renderOsintDoc(d, targetEl, grid) {
   if (nm.kenya_intel?.social_dirs?.results?.length) {
     sec3 += `<div class="doc-subsection-title"><i class="fa-earth-africa"></i> Kenya Social & Directory Results (${nm.kenya_intel.social_dirs.results.length})</div>`;
     sec3 += docResultList(nm.kenya_intel.social_dirs.results);
+  }
+  if (nm.kenya_intel?.gov?.results?.length) {
+    sec3 += `<div class="doc-subsection-title"><i class="fa-landmark"></i> Government & Institutional Records (${nm.kenya_intel.gov.results.length})</div>`;
+    sec3 += docResultList(nm.kenya_intel.gov.results);
+    sec3 += `<p class="doc-note"><i class="fa-solid fa-circle-info"></i> Sources: NTSA, BRS, KRA, LSK, KMPDB, Kenya Gazette, MyGov, KACC, NEMA, NHIF, NSSF, Judiciary, eCitizen, KEBS.</p>`;
   }
   if (ph.kenya_phone_mentions?.results?.length) {
     sec3 += `<div class="doc-subsection-title"><i class="fa-phone"></i> Phone Number Public Mentions — Kenya (${ph.kenya_phone_mentions.results.length})</div>`;
@@ -1278,7 +1298,12 @@ function renderOsintDoc(d, targetEl, grid) {
     { name: 'DuckDuckGo HTML Search (Phone)',    what: 'Open web results for phone query',                                                                                                                        found: (ph.web_intel?.bing?.results?.length || 0) > 0, skip: !t.phone },
     { name: 'Kenya News Sites (DDG scrape)',      what: 'Nation, Standard, Tuko, The Star, Citizen, Business Daily, KBC, Capital FM',                                                                             found: kNewsCount > 0,         skip: !t.name },
     { name: 'Kenya Social & Directories',        what: 'Twitter/X, Facebook, LinkedIn, Instagram, TikTok, Yellow Pages KE, PigiaMe, Jiji, BrighterMonday, eCitizen, Judiciary, M-Changa',                       found: kSocCount > 0,          skip: !t.name },
+    { name: 'Kenya Gov & Institutional (DDG)',   what: 'NTSA, BRS, KRA, LSK, KMPDB, Kenya Gazette, MyGov, KACC, NEMA, NHIF, NSSF, Judiciary, eCitizen, KIPI',                                                   found: (nm.kenya_intel?.gov?.results?.length || 0) > 0, skip: !t.name },
     { name: 'Kenya Phone Mentions',              what: 'Public mentions of phone number in Kenyan web sources',                                                                                                   found: kPhoneCount > 0,        skip: !t.phone || !ph.kenya_phone_mentions },
+    { name: 'LinkedIn DDG Search',               what: 'linkedin.com/in profile discovery via DuckDuckGo HTML scrape',                                                                                            found: (nm.social_profiles?.linkedin?.results?.length || 0) > 0, skip: !t.name },
+    { name: 'Instagram DDG Search',             what: 'instagram.com profile discovery via DuckDuckGo HTML scrape',                                                                                              found: (nm.social_profiles?.instagram?.results?.length || 0) > 0, skip: !t.name },
+    { name: 'Facebook DDG Search',              what: 'facebook.com profile discovery via DuckDuckGo HTML scrape',                                                                                               found: (nm.social_profiles?.facebook?.results?.length || 0) > 0, skip: !t.name },
+    { name: 'TikTok DDG Search',                what: 'tiktok.com profile discovery via DuckDuckGo HTML scrape',                                                                                                 found: (nm.social_profiles?.tiktok?.results?.length || 0) > 0, skip: !t.name },
     { name: 'Gravatar',                          what: 'Avatar and profile lookup by email MD5 hash',                                                                                                             found: hasGravatar,             skip: !t.email },
     { name: 'HaveIBeenPwned (HIBP)',             what: 'Data breach check by email address',                                                                                                                      found: breachCount > 0,        skip: !t.email || !em.breach_data?.configured },
     { name: 'EmailRep.io',                       what: 'Email reputation, history, and linked profiles',                                                                                                          found: hasEmailRep,             skip: !t.email },
@@ -1317,6 +1342,42 @@ function renderOsintDoc(d, targetEl, grid) {
   if (cr.search_links) researchSections.push({ title: 'Cross-Reference — Combined Search', links: cr.search_links });
   if (cr.google_dorks) researchSections.push({ title: 'Cross-Reference — Google Dorks', links: cr.google_dorks });
 
+  // ── Conflict clarification panel ──────────────────────────
+  const conflicts = Array.isArray(d.conflicts) ? d.conflicts : [];
+  let conflictsHtml = '';
+  if (conflicts.length) {
+    conflictsHtml = `<div class="doc-conflicts">
+      <div class="doc-conflicts-header">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        ${conflicts.length} Data Conflict${conflicts.length > 1 ? 's' : ''} Detected — Clarification Requested
+      </div>
+      <div class="doc-conflicts-body">
+        ${conflicts.map((c, ci) => {
+          const opts = Array.isArray(c.options) ? c.options : [];
+          return `<div class="doc-conflict" id="conflict-${ci}">
+            <div class="doc-conflict-type">
+              <span class="doc-conflict-badge doc-conflict-${esc(String(c.severity || 'info'))}">${esc(String(c.type || 'conflict').replace(/_/g, ' '))}</span>
+            </div>
+            <div class="doc-conflict-desc">${esc(String(c.description || ''))}</div>
+            ${c.note ? `<div class="doc-conflict-note"><i class="fa-solid fa-circle-info"></i> ${esc(String(c.note))}</div>` : ''}
+            <div class="doc-conflict-options">
+              ${opts.map((o, oi) => `<label class="doc-conflict-option">
+                <input type="radio" name="conflict-${ci}" value="${esc(String(o.value || oi))}" />
+                <span>${esc(String(o.label || ''))}</span>
+              </label>`).join('')}
+            </div>
+            <div class="doc-conflict-actions">
+              <button class="doc-conflict-resolve-btn" onclick="resolveConflict(${ci}, this)">
+                <i class="fa-solid fa-check"></i> Acknowledge &amp; Continue
+              </button>
+              <div class="doc-conflict-resolved-msg" style="display:none"><i class="fa-solid fa-circle-check"></i> Acknowledged</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+
   // ── Assemble document ─────────────────────────────────────
   const doc = document.createElement('div');
   doc.className = 'osint-doc';
@@ -1325,6 +1386,7 @@ function renderOsintDoc(d, targetEl, grid) {
       <div class="doc-exec-label"><i class="fa-solid fa-bullseye"></i> Executive Summary</div>
       <div class="doc-exec-text">${execSummaryText}</div>
     </div>
+    ${conflictsHtml}
     ${docSec(1, 'fa-id-card',            'Subject Identification',   sec1)}
     ${docSec(2, 'fa-fingerprint',        'Digital Footprint',        sec2)}
     ${docSec(3, 'fa-earth-africa',       'Kenya Intelligence',       sec3)}
@@ -1407,6 +1469,16 @@ function errorBlock(msg) {
   el.style.gridColumn = '1 / -1';
   el.innerHTML = `<i class="fa-solid fa-circle-xmark"></i><span>${esc(msg)}</span>`;
   return el;
+}
+
+function resolveConflict(ci, btn) {
+  const el = document.getElementById(`conflict-${ci}`);
+  if (!el) return;
+  btn.disabled = true;
+  el.querySelectorAll('input[type="radio"]').forEach(r => r.disabled = true);
+  const resolved = el.querySelector('.doc-conflict-resolved-msg');
+  if (resolved) resolved.style.display = 'flex';
+  el.style.opacity = '0.6';
 }
 
 function platformIcon(label) {
