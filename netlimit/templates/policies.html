@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Policies - NetLimit{% endblock %}
+{% block content %}
+<h1>Policy rules</h1>
+<p class="subtitle">User-level rules override department-level rules. No rule means allow.</p>
+
+<table>
+  <tr><th>Scope</th><th>Category</th><th>Action</th><th>Restricted window</th><th></th></tr>
+  {% for rule in rules %}
+  <tr>
+    <td>{% if rule.user_id %}User: {{ rule.user.full_name }}{% else %}Dept: {{ rule.department.name }}{% endif %}</td>
+    <td>{{ rule.category.name }}</td>
+    <td>{{ rule.action }}</td>
+    <td>{% if rule.restricted_start %}{{ rule.restricted_start.strftime('%H:%M') }} - {{ rule.restricted_end.strftime('%H:%M') }}{% else %}&mdash;{% endif %}</td>
+    <td>
+      <form class="inline" method="post" action="{{ url_for('delete_policy', rule_id=rule.id) }}">
+        <button type="submit" class="danger">Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2>Add rule</h2>
+<form class="form-row" method="post">
+  <select name="scope_type">
+    <option value="department">Department</option>
+    <option value="user">User (by ID)</option>
+  </select>
+  <input type="number" name="scope_id" placeholder="Department or User ID" required>
+  <select name="category_id">
+    {% for category in categories %}
+    <option value="{{ category.id }}">{{ category.name }}</option>
+    {% endfor %}
+  </select>
+  <select name="action">
+    {% for action in actions %}
+    <option value="{{ action }}">{{ action }}</option>
+    {% endfor %}
+  </select>
+  <input type="time" name="restricted_start" title="Restricted window start (time_restricted only)">
+  <input type="time" name="restricted_end" title="Restricted window end (time_restricted only)">
+  <button type="submit">Add rule</button>
+</form>
+
+<p class="muted">Department IDs and names: {% for dept in departments %}{{ dept.id }}={{ dept.name }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+{% endblock %}

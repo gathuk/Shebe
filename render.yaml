@@ -1,0 +1,33 @@
+# Render Blueprint for the NetLimit dashboard (netlimit/).
+# Deploy: https://render.com/deploy?repo=https://github.com/gathuk/Shebe
+#
+# Provisions a free managed Postgres database alongside the web service,
+# so data (policy edits, seeded users, usage) persists across redeploys
+# and idle spin-downs -- unlike the instance's own ephemeral disk.
+# netlimit/wsgi.py still auto-seeds demo data on first boot, when the
+# database is empty.
+#
+# Render's free Postgres tier expires after 90 days; see
+# netlimit/README.md for other hosted-Postgres options if you need
+# longer-lived persistence.
+databases:
+  - name: netlimit-db
+    plan: free
+    databaseName: netlimit
+    user: netlimit
+
+services:
+  - type: web
+    name: netlimit
+    runtime: python
+    plan: free
+    buildCommand: pip install -r netlimit/requirements.txt
+    startCommand: gunicorn -w 2 -b 0.0.0.0:$PORT netlimit.wsgi:app
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: NETLIMIT_DB_URL
+        fromDatabase:
+          name: netlimit-db
+          property: connectionString

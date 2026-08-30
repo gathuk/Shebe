@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Categories - NetLimit{% endblock %}
+{% block content %}
+<h1>Categories</h1>
+<p class="subtitle">Domains used to classify traffic for policy rules.</p>
+
+{% for category in categories %}
+<h2>{{ category.name }} <span class="muted">{{ category.description }}</span></h2>
+<p>
+  {% for d in category.domains %}<span class="badge ok">{{ d.domain }}</span>{% endfor %}
+  {% if not category.domains %}<span class="muted">no domains yet</span>{% endif %}
+</p>
+<form class="form-row" method="post" action="{{ url_for('add_domain', category_id=category.id) }}">
+  <input type="text" name="domain" placeholder="e.g. example.com" required>
+  <button type="submit">Add domain</button>
+</form>
+{% endfor %}
+
+<h2>Add category</h2>
+<form class="form-row" method="post">
+  <input type="text" name="name" placeholder="Category name" required>
+  <input type="text" name="description" placeholder="Description">
+  <button type="submit">Add</button>
+</form>
+{% endblock %}

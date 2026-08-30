@@ -1405,6 +1405,64 @@ function renderOsintDoc(d, targetEl, grid) {
   }
 }
 
+// ── HYBRID RENDER ────────────────────────────────────────────
+function renderHybrid(d, targetEl, grid) {
+  if (d.error) {
+    targetEl.innerHTML = `<div class="target-avatar-placeholder"><i class="fa-solid fa-layer-group"></i></div>
+      <div class="target-info"><div class="target-label">Hybrid Search</div><div class="target-name">—</div></div>`;
+    grid.appendChild(errorBlock(d.error));
+    return;
+  }
+
+  const t = d.target || {};
+  const tags = [
+    t.name  ? tag(`Name: ${t.name}`, 'blue') : '',
+    t.email ? tag(`Email: ${t.email}`, 'purple') : '',
+    t.phone ? tag(`Phone: ${t.phone}`, 'green') : '',
+  ].filter(Boolean).join('');
+
+  targetEl.innerHTML = `
+    <div class="target-avatar-placeholder"><i class="fa-solid fa-layer-group"></i></div>
+    <div class="target-info">
+      <div class="target-label">Hybrid Search</div>
+      <div class="target-name">${esc([t.name, t.email, t.phone].filter(Boolean).join(' / '))}</div>
+      <div class="target-tags">${tags}</div>
+    </div>`;
+
+  // Cross-reference card
+  const cr = d.cross_reference || {};
+  let crContent = '';
+  if (cr.notes?.length) {
+    crContent += `<div class="note-list">${cr.notes.map(n =>
+      `<div class="note-item"><i class="fa-solid fa-lightbulb"></i>${esc(n)}</div>`).join('')}</div>`;
+  }
+  if (cr.search_links && Object.keys(cr.search_links).length) {
+    crContent += `<div style="margin-top:10px"><div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px">Combined Search</div>${buildLinkList(cr.search_links)}</div>`;
+  }
+  if (cr.google_dorks && Object.keys(cr.google_dorks).length) {
+    crContent += `<div style="margin-top:10px"><div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:6px">Cross-Reference Dorks</div>${buildLinkList(cr.google_dorks)}</div>`;
+  }
+  if (!crContent) {
+    crContent = `<div class="no-data"><i class="fa-solid fa-circle-info"></i>Provide two or more identifiers (name, email, phone) for cross-reference links.</div>`;
+  }
+  grid.appendChild(card('Cross-Reference', 'fa-link', 'icon-orange', crContent));
+
+  // Sub-reports
+  if (d.name)  appendSubReport(grid, 'Name Report', 'fa-user', d.name, renderName);
+  if (d.email) appendSubReport(grid, 'Email Report', 'fa-envelope', d.email, renderEmail);
+  if (d.phone) appendSubReport(grid, 'Phone Report', 'fa-phone', d.phone, renderPhone);
+}
+
+function appendSubReport(grid, title, iconCls, data, renderFn) {
+  const divider = document.createElement('div');
+  divider.className = 'hybrid-section-divider';
+  divider.innerHTML = `<i class="fa-solid ${esc(iconCls)}"></i> <span>${esc(title)}</span>`;
+  grid.appendChild(divider);
+
+  const dummyTarget = document.createElement('div');
+  renderFn(data, dummyTarget, grid);
+}
+
 // ── Helpers ──────────────────────────────────────────────────
 function card(title, iconCls, iconColorCls, bodyHtml) {
   const el = document.createElement('div');
