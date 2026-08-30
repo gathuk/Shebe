@@ -299,7 +299,7 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
   if (username.includes(".") || username.includes("_"))
     usernameNotes.push("Username contains separator (firstname.lastname pattern likely)");
 
-  const [mx, txt, gravatar, breach, whoisData, ddg, bing] = await Promise.all([
+  const [mx, txt, gravatar, breach, whoisData, ddg, bing, emailRep] = await Promise.all([
     getMxRecords(domain),
     getTxtRecords(domain),
     checkGravatar(email),
@@ -307,6 +307,7 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
     isCorporate ? getRdapData(domain) : Promise.resolve({ note: "Skipped for major/known providers" }),
     checkDuckDuckGo(email),
     checkBingSearch(email),
+    checkEmailRep(email),
   ]);
 
   const enc = encodeURIComponent;
@@ -324,6 +325,7 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
     txt_records: txt,
     whois: whoisData,
     breach_data: breach,
+    email_rep: emailRep,
     web_intel: { ddg, bing },
     search_links: {
       "Google (exact)": `https://www.google.com/search?q="${enc(email)}"`,
@@ -369,6 +371,67 @@ function numberTypeToString(type: string | undefined): string {
   return NUMBER_TYPE_MAP[type ?? ""] ?? "Unknown";
 }
 
+// ── Extra free live sources ───────────────────────────────────────────────────
+
+// EmailRep.io — free, no key (10 req/day): reputation + linked profiles + first/last seen
+async function checkEmailRep(email: string): Promise<Record<string, unknown>> {
+  try {
+    const resp = await fetch(`https://emailrep.io/${encodeURIComponent(email)}`, {
+      headers: { "User-Agent": "shebe-osint/1.0" },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!resp.ok) return { error: `HTTP ${resp.status}` };
+    const data = await resp.json() as Record<string, unknown>;
+    const details = (data.details ?? {}) as Record<string, unknown>;
+    return {
+      reputation:          data.reputation,
+      suspicious:          data.suspicious,
+      references:          data.references,
+      profiles:            details.profiles ?? [],
+      first_seen:          details.first_seen ?? null,
+      last_seen:           details.last_seen ?? null,
+      spam:                details.spam,
+      deliverable:         details.deliverable,
+      malicious_activity:  details.malicious_activity,
+      credentials_leaked:  details.credentials_leaked,
+      data_breach:         details.data_breach,
+      blacklisted:         details.blacklisted,
+      free_provider:       details.free_provider,
+    };
+  } catch (e: unknown) {
+    return { error: e instanceof Error ? e.message : "timeout" };
+  }
+}
+
+// Name analysis — Genderize + Agify + Nationalize (all free, no key, 1000 req/day each)
+async function checkNameAnalysis(firstName: string): Promise<Record<string, unknown>> {
+  if (!firstName) return {};
+  const enc = encodeURIComponent(firstName);
+  const [g, a, n] = await Promise.allSettled([
+    fetch(`https://api.genderize.io/?name=${enc}`, { signal: AbortSignal.timeout(4000) }).then(r => r.json()),
+    fetch(`https://api.agify.io/?name=${enc}`,    { signal: AbortSignal.timeout(4000) }).then(r => r.json()),
+    fetch(`https://api.nationalize.io/?name=${enc}`, { signal: AbortSignal.timeout(4000) }).then(r => r.json()),
+  ]);
+  return {
+    gender: g.status === "fulfilled" && g.value?.gender ? {
+      gender:      String(g.value.gender),
+      probability: Math.round(Number(g.value.probability ?? 0) * 100),
+      sample_size: g.value.count,
+    } : null,
+    age: a.status === "fulfilled" && a.value?.age ? {
+      predicted_age: a.value.age,
+      sample_size:   a.value.count,
+    } : null,
+    nationalities: n.status === "fulfilled"
+      ? (n.value?.country ?? []).slice(0, 5).map((c: Record<string, unknown>) => ({
+          code:        String(c.country_id ?? ""),
+          name:        COUNTRY_NAMES[String(c.country_id ?? "")] ?? String(c.country_id ?? ""),
+          probability: Math.round(Number(c.probability ?? 0) * 100),
+        }))
+      : [],
+  };
+}
+
 // ── Web Intelligence (shared across all search types) ────────────────────────
 
 // DuckDuckGo Instant Answer — free, no key needed
@@ -409,10 +472,65 @@ async function checkDuckDuckGo(query: string): Promise<Record<string, unknown>> 
   }
 }
 
+// DuckDuckGo HTML scraper — free fallback for real web results (no API key needed)
+async function scrapeDuckDuckGoHtml(query: string): Promise<Record<string, unknown>> {
+  try {
+    const resp = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      signal: AbortSignal.timeout(9000),
+    });
+    if (!resp.ok) return { configured: true, source: "ddg", error: `HTTP ${resp.status}`, results: [] };
+    const html = await resp.text();
+
+    // Extract URLs: DDG HTML uses redirect links with uddg= param containing the real URL
+    const urlRe = /href="\/\/duckduckgo\.com\/l\/\?[^"]*uddg=([^&"]+)[^"]*"[^>]*class="result__a"[^>]*>|class="result__a"[^>]*href="\/\/duckduckgo\.com\/l\/\?[^"]*uddg=([^&"]+)[^"]*"[^>]*>/gi;
+    const titleRe = /class="result__a"[^>]*>([\s\S]*?)<\/a>/gi;
+    const snippetRe = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+
+    const urls: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = urlRe.exec(html)) !== null) {
+      const encoded = m[1] || m[2];
+      if (encoded) {
+        try { urls.push(decodeURIComponent(encoded)); } catch { /* skip */ }
+      }
+    }
+
+    const titles: string[] = [];
+    while ((m = titleRe.exec(html)) !== null) {
+      const t = m[1].replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
+      if (t) titles.push(t);
+    }
+
+    const snippets: string[] = [];
+    while ((m = snippetRe.exec(html)) !== null) {
+      const s = m[1].replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
+      if (s) snippets.push(s);
+    }
+
+    const results: Array<Record<string, unknown>> = [];
+    for (let i = 0; i < Math.min(titles.length, 6); i++) {
+      const url = urls[i] ?? "";
+      let displayUrl = url;
+      try { displayUrl = new URL(url).hostname; } catch { /* keep raw */ }
+      results.push({ title: titles[i], url, display_url: displayUrl, snippet: snippets[i] ?? "" });
+    }
+
+    return { configured: true, source: "ddg", results, total_estimated: null };
+  } catch (e: unknown) {
+    return { configured: true, source: "ddg", error: e instanceof Error ? e.message : "failed", results: [] };
+  }
+}
+
 // Bing Web Search — real web snippets (needs BING_SEARCH_API_KEY, free: 1000 req/month)
+// Falls back to DuckDuckGo HTML scraping when key is not set.
 async function checkBingSearch(query: string): Promise<Record<string, unknown>> {
   const apiKey = Netlify.env.get("BING_SEARCH_API_KEY");
-  if (!apiKey) return { configured: false };
+  if (!apiKey) return scrapeDuckDuckGoHtml(query);
 
   try {
     const url = `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(query)}&count=6&textDecorations=false&safeSearch=Off`;
@@ -447,6 +565,190 @@ async function checkBingSearch(query: string): Promise<Record<string, unknown>> 
   } catch (e: unknown) {
     return { configured: true, error: e instanceof Error ? e.message : "timeout" };
   }
+}
+
+// ── Kenya-specific OSINT ─────────────────────────────────────────────────────
+
+async function searchKenyaIntel(name: string): Promise<{
+  news: Record<string, unknown>;
+  social_dirs: Record<string, unknown>;
+  gov: Record<string, unknown>;
+}> {
+  const q = (suffix: string) => `"${name}" ${suffix}`;
+
+  // Major Kenyan news outlets
+  const newsQuery = q(
+    "site:nation.africa OR site:standardmedia.co.ke OR site:tuko.co.ke OR " +
+    "site:the-star.co.ke OR site:citizen.digital OR site:businessdailyafrica.com OR " +
+    "site:kbc.co.ke OR site:nairobinews.nation.africa OR site:capitalfm.co.ke"
+  );
+
+  // Kenyan social media (Kenya-context) + classifieds + marketplace
+  const socialDirQuery = q(
+    "(site:twitter.com OR site:facebook.com OR site:linkedin.com OR site:instagram.com OR site:tiktok.com) Kenya OR Nairobi " +
+    "OR site:yellowpages.co.ke OR site:pigiame.co.ke OR site:jiji.co.ke OR " +
+    "site:brightermonday.co.ke OR site:myjobmag.co.ke OR site:mchanga.africa OR site:jumia.co.ke"
+  );
+
+  // Kenya government & institutional registries
+  const govQuery = q(
+    "site:ntsa.go.ke OR site:brs.go.ke OR site:kra.go.ke OR site:lsk.or.ke OR " +
+    "site:kmpdb.or.ke OR site:kenyagazette.go.ke OR site:mygov.go.ke OR " +
+    "site:kacc.go.ke OR site:nema.go.ke OR site:nhif.or.ke OR site:nssf.or.ke OR " +
+    "site:judiciary.go.ke OR site:efts.ecitizen.go.ke OR site:ipkenya.go.ke"
+  );
+
+  const [news, socialDirs, gov] = await Promise.allSettled([
+    scrapeDuckDuckGoHtml(newsQuery),
+    scrapeDuckDuckGoHtml(socialDirQuery),
+    scrapeDuckDuckGoHtml(govQuery),
+  ]);
+
+  return {
+    news:        news.status        === "fulfilled" ? news.value        : { configured: true, results: [] },
+    social_dirs: socialDirs.status  === "fulfilled" ? socialDirs.value  : { configured: true, results: [] },
+    gov:         gov.status         === "fulfilled" ? gov.value         : { configured: true, results: [] },
+  };
+}
+
+// Social platform profile searches (global, not Kenya-specific)
+async function searchSocialProfiles(name: string): Promise<{
+  linkedin:  Record<string, unknown>;
+  instagram: Record<string, unknown>;
+  facebook:  Record<string, unknown>;
+  tiktok:    Record<string, unknown>;
+}> {
+  const [linkedin, instagram, facebook, tiktok] = await Promise.allSettled([
+    scrapeDuckDuckGoHtml(`"${name}" site:linkedin.com/in`),
+    scrapeDuckDuckGoHtml(`"${name}" site:instagram.com`),
+    scrapeDuckDuckGoHtml(`"${name}" site:facebook.com`),
+    scrapeDuckDuckGoHtml(`"${name}" site:tiktok.com`),
+  ]);
+  return {
+    linkedin:  linkedin.status  === "fulfilled" ? linkedin.value  : { results: [] },
+    instagram: instagram.status === "fulfilled" ? instagram.value : { results: [] },
+    facebook:  facebook.status  === "fulfilled" ? facebook.value  : { results: [] },
+    tiktok:    tiktok.status    === "fulfilled" ? tiktok.value    : { results: [] },
+  };
+}
+
+// Detect conflicting signals across gathered data sources
+function detectConflicts(
+  nameRes: Record<string, unknown> | null,
+  emailRes: Record<string, unknown> | null,
+  phoneRes: Record<string, unknown> | null,
+): Array<Record<string, unknown>> {
+  const conflicts: Array<Record<string, unknown>> = [];
+
+  // 1. Phone country vs name nationality mismatch
+  if (phoneRes && nameRes) {
+    const phoneRegion = String(phoneRes["region_code"] ?? "");
+    const nats = (((nameRes["name_analysis"] as Record<string, unknown>)?.["nationalities"] ?? []) as Array<{code: string; name: string; probability: number}>);
+    if (phoneRegion && nats.length > 0) {
+      const top = nats[0];
+      // Only flag if probability is high and countries genuinely differ
+      const diasporaNeutral = ["US", "GB", "CA", "AU", "NL", "AE"]; // common expat hubs, mismatch expected
+      if (top.probability >= 65 && top.code !== phoneRegion && !diasporaNeutral.includes(top.code)) {
+        conflicts.push({
+          id: "geographic_mismatch",
+          type: "geographic_mismatch",
+          severity: "info",
+          description: `Phone registered in ${String(phoneRes["country_name"])} (${phoneRegion}), but the name statistically associates most with ${top.name} (${top.probability}% probability).`,
+          note: "May indicate diaspora, use of a foreign SIM, or a limitation of name-origin statistical models.",
+          options: [
+            { value: "phone",   label: `Trust phone — subject is ${String(phoneRes["country_name"])}-based` },
+            { value: "name",    label: `Trust name origin — subject is ${top.name}-based` },
+            { value: "both",    label: "Both plausible — diaspora or international" },
+          ],
+        });
+      }
+    }
+  }
+
+  // 2. EmailRep says "no breach" but HIBP says "breached"
+  if (emailRes) {
+    const er = (emailRes["email_rep"] ?? {}) as Record<string, unknown>;
+    const br = (emailRes["breach_data"] ?? {}) as Record<string, unknown>;
+    if (!er["error"] && er["data_breach"] === false && br["configured"] && br["breached"]) {
+      const cnt = Number(br["count"] ?? 0);
+      conflicts.push({
+        id: "breach_data_mismatch",
+        type: "data_discrepancy",
+        severity: "medium",
+        description: `EmailRep.io reports no breach history, but HIBP found ${cnt} breach${cnt !== 1 ? "es" : ""} for this address.`,
+        note: "HIBP is the authoritative source for data breach data — their database is more comprehensive.",
+        options: [
+          { value: "trust_hibp",     label: `Trust HIBP — ${cnt} breach${cnt !== 1 ? "es" : ""} confirmed` },
+          { value: "trust_emailrep", label: "Trust EmailRep — no breach" },
+          { value: "note_both",      label: "Note the discrepancy — sources disagree" },
+        ],
+      });
+    }
+  }
+
+  // 3. Multiple GitHub profiles with different locations/identities
+  if (nameRes) {
+    const ghFound = ((nameRes["github_profiles"] ?? []) as Array<Record<string, unknown>>).filter(p => p["found"] === true);
+    if (ghFound.length > 1) {
+      const locs = [...new Set(ghFound.filter(p => p["location"]).map(p => String(p["location"])))];
+      if (locs.length > 1) {
+        conflicts.push({
+          id: "multiple_github_profiles",
+          type: "identity_ambiguity",
+          severity: "info",
+          description: `${ghFound.length} GitHub profiles matched generated username patterns, showing different locations: ${locs.join(", ")}.`,
+          note: "Common username patterns may match multiple unrelated individuals. Review each profile to determine which is the subject.",
+          options: ghFound.slice(0, 4).map(p => ({
+            value: String(p["username"]),
+            label: `@${p["username"]}${p["name"] ? ` ("${p["name"]}")` : ""}${p["location"] ? ` — ${p["location"]}` : ""}`,
+          })),
+        });
+      }
+    }
+  }
+
+  // 4. Kenyan email domain vs non-Kenyan phone
+  if (emailRes && phoneRes) {
+    const domain = String(emailRes["domain"] ?? "");
+    const phoneRegion = String(phoneRes["region_code"] ?? "");
+    const isKenyanEmail = [".co.ke", ".go.ke", ".ac.ke", ".or.ke"].some(s => domain.endsWith(s));
+    if (isKenyanEmail && phoneRegion && phoneRegion !== "KE") {
+      conflicts.push({
+        id: "email_country_vs_phone_country",
+        type: "geographic_mismatch",
+        severity: "info",
+        description: `Email domain is Kenyan (.ke TLD) but phone number is registered in ${String(phoneRes["country_name"])}.`,
+        note: "The subject may operate across both countries, or one identifier may belong to a different person.",
+        options: [
+          { value: "kenya",        label: "Subject is Kenya-based (email domain primary)" },
+          { value: "phone_country", label: `Subject is ${String(phoneRes["country_name"])}-based (phone primary)` },
+          { value: "both",         label: "Subject operates in both countries" },
+        ],
+      });
+    }
+  }
+
+  // 5. Email reputation "high" but HIBP shows active breaches
+  if (emailRes) {
+    const er = (emailRes["email_rep"] ?? {}) as Record<string, unknown>;
+    const br = (emailRes["breach_data"] ?? {}) as Record<string, unknown>;
+    if (!er["error"] && er["reputation"] === "high" && br["configured"] && br["breached"] && Number(br["count"]) >= 3) {
+      const cnt = Number(br["count"]);
+      conflicts.push({
+        id: "reputation_vs_breach_count",
+        type: "data_discrepancy",
+        severity: "low",
+        description: `EmailRep.io rates this address as "high reputation", but it appears in ${cnt} data breaches.`,
+        note: "High EmailRep reputation reflects established usage patterns; breach presence is independent of reputation.",
+        options: [
+          { value: "accept",  label: "Accept: long-standing address, simply exposed in breaches" },
+          { value: "caution", label: "Flag: high breach count warrants caution despite reputation" },
+        ],
+      });
+    }
+  }
+
+  return conflicts;
 }
 
 // ── Reverse Phone Lookup ─────────────────────────────────────────────────────
@@ -690,13 +992,19 @@ async function gatherPhone(phoneInput: string): Promise<Record<string, unknown>>
       "Signal (click to open app)": `https://signal.me/#p/${e164}`,
     },
     ...await (async () => {
-      const [reverse_lookup, numverify, ddg, bing] = await Promise.all([
+      const isKenya = regionCode === "KE";
+      const kenyaPhoneQ = `"${e164}" OR "${String(parsed.nationalNumber)}" ` +
+        `site:jiji.co.ke OR site:pigiame.co.ke OR site:tuko.co.ke OR ` +
+        `site:standardmedia.co.ke OR site:nation.africa OR site:facebook.com OR site:mchanga.africa`;
+
+      const [reverse_lookup, numverify, ddg, bing, kenyaPhone] = await Promise.all([
         checkReversePhone(e164),
         checkNumVerify(e164),
         checkDuckDuckGo(e164),
         checkBingSearch(e164),
+        isKenya ? scrapeDuckDuckGoHtml(kenyaPhoneQ) : Promise.resolve(null),
       ]);
-      return { reverse_lookup, numverify, web_intel: { ddg, bing } };
+      return { reverse_lookup, numverify, web_intel: { ddg, bing }, kenya_phone_mentions: kenyaPhone };
     })(),
   };
 }
@@ -903,7 +1211,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
   const parts = parseName(name);
   const usernames = generateUsernames(parts);
 
-  const [githubResults, redditResults, keybaseResults, devtoResults, mastodonResults, wikipedia, ddg, bing] = await Promise.all([
+  const [githubResults, redditResults, keybaseResults, devtoResults, mastodonResults, wikipedia, ddg, bing, nameAnalysis, kenyaIntel, socialProfiles] = await Promise.all([
     checkGithub(usernames),
     checkReddit(usernames),
     checkKeybase(usernames),
@@ -912,6 +1220,9 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
     searchWikipedia(name),
     checkDuckDuckGo(name),
     checkBingSearch(name),
+    checkNameAnalysis(parts.first || name),
+    searchKenyaIntel(name),
+    searchSocialProfiles(name),
   ]);
 
   const foundCount = githubResults.filter((r) => r["found"] === true).length;
@@ -970,6 +1281,9 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
     mastodon_accounts: mastodonResults,
     mastodon_found_count: mastodonFoundCount,
     wikipedia,
+    name_analysis: nameAnalysis,
+    kenya_intel: kenyaIntel,
+    social_profiles: socialProfiles,
     web_intel: { ddg, bing },
     search_links: {
       "Google (full name)": `https://www.google.com/search?q=${encodedFull}`,
@@ -1077,12 +1391,15 @@ async function gatherHybrid(input: { name?: string; email?: string; phone?: stri
   if (email && phone) matchSignals.push("Email and phone both provided — look for accounts that expose both (e.g. marketplace listings)");
   if (name && email && phone) matchSignals.push("All three identifiers provided — highest accuracy; prioritize sources that corroborate all three");
 
+  const conflicts = detectConflicts(nameResult, emailResult, phoneResult);
+
   return {
     target: { name: name || null, email: email || null, phone: phone || null },
     valid: true,
     name: nameResult,
     email: emailResult,
     phone: phoneResult,
+    conflicts,
     cross_reference: {
       identifiers_used: terms.length,
       notes: matchSignals,
