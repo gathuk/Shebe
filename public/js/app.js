@@ -3,6 +3,28 @@
 // ── State ────────────────────────────────────────────────────
 let lastResult = null;
 
+// ── Result cache (localStorage, keyed by search inputs) ──────
+const CACHE_PREFIX = 'shebe_cache_';
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function cacheKey(type, fields) {
+  return CACHE_PREFIX + btoa(JSON.stringify({ type, ...fields })).slice(0, 64);
+}
+
+function cacheGet(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL_MS) { localStorage.removeItem(key); return null; }
+    return data;
+  } catch { return null; }
+}
+
+function cacheSet(key, data) {
+  try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   setupForm();
@@ -26,23 +48,24 @@ function setupForm() {
 }
 
 // ── Search ───────────────────────────────────────────────────
-async function runSearch(type, fields) {
-  showLoading();
+const STEP_LABELS = {
+  name:  'Gathering name intelligence…',
+  email: 'Gathering email intelligence…',
+  phone: 'Gathering phone intelligence…',
+};
 
-  // Animate loader steps
-  const steps = ['step1', 'step2', 'step3'];
-  let si = 0;
-  const stepInterval = setInterval(() => {
-    if (si > 0) {
-      document.getElementById(steps[si - 1]).classList.remove('active');
-      document.getElementById(steps[si - 1]).classList.add('done');
-      document.getElementById(steps[si - 1]).querySelector('i').className = 'fa-solid fa-check-circle';
-    }
-    if (si < steps.length) {
-      document.getElementById(steps[si]).classList.add('active');
-      si++;
-    }
-  }, 800);
+async function runSearch(type, fields) {
+  // Check cache first
+  const ck = cacheKey(type, fields);
+  const cached = cacheGet(ck);
+  if (cached) {
+    lastResult = cached;
+    renderReport(cached, type);
+    showCacheBadge();
+    return;
+  }
+
+  showLoading();
 
   try {
     const resp = await fetch('/api/search', {
@@ -51,17 +74,71 @@ async function runSearch(type, fields) {
       body: JSON.stringify({ type, ...fields }),
     });
 
-    clearInterval(stepInterval);
-    const data = await resp.json();
-    lastResult = data;
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: 'Server error' }));
+      showError(err.error || 'Server error');
+      return;
+    }
 
-    if (data.error) {
-      showError(data.error);
+    const contentType = resp.headers.get('Content-Type') || '';
+
+    if (contentType.includes('text/event-stream') && resp.body) {
+      // ── SSE streaming path ──────────────────────────────────
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let stepIdx = 0;
+      const stepEls = ['step1', 'step2', 'step3'];
+
+      function advanceStep(label) {
+        if (stepIdx > 0 && stepIdx - 1 < stepEls.length) {
+          const prev = document.getElementById(stepEls[stepIdx - 1]);
+          if (prev) { prev.classList.remove('active'); prev.classList.add('done'); prev.querySelector('i').className = 'fa-solid fa-check-circle'; }
+        }
+        if (stepIdx < stepEls.length) {
+          const cur = document.getElementById(stepEls[stepIdx]);
+          if (cur) {
+            cur.classList.add('active');
+            const span = cur.querySelector('span') || cur;
+            if (label) span.textContent = label;
+          }
+          stepIdx++;
+        }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const chunk of parts) {
+          const line = chunk.split('\n').find(l => l.startsWith('data: '));
+          if (!line) continue;
+          let msg;
+          try { msg = JSON.parse(line.slice(6)); } catch { continue; }
+          if (msg.type === 'progress') {
+            advanceStep(STEP_LABELS[msg.step] || msg.label);
+          } else if (msg.type === 'result') {
+            lastResult = msg.data;
+            cacheSet(ck, msg.data);
+            renderReport(msg.data, type);
+            return;
+          } else if (msg.type === 'error') {
+            showError(msg.error || 'Server error');
+            return;
+          }
+        }
+      }
     } else {
+      // ── Non-streaming fallback ──────────────────────────────
+      const data = await resp.json();
+      lastResult = data;
+      if (data.error) { showError(data.error); return; }
+      cacheSet(ck, data);
       renderReport(data, type);
     }
   } catch (err) {
-    clearInterval(stepInterval);
     showError('Network error — could not reach the server. Please try again.');
   }
 }
@@ -70,12 +147,11 @@ async function runSearch(type, fields) {
 function showLoading() {
   hide('resultsSection');
   show('loadingState');
-  // reset steps
+  const icons = ['fa-solid fa-check-circle', 'fa-solid fa-circle-notch fa-spin', 'fa-regular fa-circle'];
   ['step1','step2','step3'].forEach((id, i) => {
     const el = document.getElementById(id);
     el.classList.remove('active', 'done');
-    const icon = el.querySelector('i');
-    icon.className = i === 0 ? 'fa-solid fa-check-circle' : i === 1 ? 'fa-solid fa-circle-notch fa-spin' : 'fa-regular fa-circle';
+    el.querySelector('i').className = icons[i];
   });
   document.getElementById('step1').classList.add('active');
 }
@@ -84,6 +160,31 @@ function resetToSearch() {
   hide('resultsSection');
   hide('loadingState');
   document.getElementById('hybridName').focus();
+  const cb = document.getElementById('cacheBadge');
+  if (cb) cb.remove();
+}
+
+function showCacheBadge() {
+  hide('loadingState');
+  const existing = document.getElementById('cacheBadge');
+  if (!existing) {
+    const badge = document.createElement('div');
+    badge.id = 'cacheBadge';
+    badge.className = 'cache-badge';
+    badge.innerHTML = '<i class="fa-solid fa-bolt"></i> Loaded from cache — <button onclick="clearAndRerun()">Re-run fresh</button>';
+    document.getElementById('reportContent').prepend(badge);
+  }
+}
+
+function clearAndRerun() {
+  const name  = document.getElementById('hybridName').value.trim();
+  const email = document.getElementById('hybridEmail').value.trim();
+  const phone = document.getElementById('hybridPhone').value.trim();
+  const ck = cacheKey('hybrid', { name, email, phone });
+  try { localStorage.removeItem(ck); } catch {}
+  const cb = document.getElementById('cacheBadge');
+  if (cb) cb.remove();
+  runSearch('hybrid', { name, email, phone });
 }
 
 function showError(msg) {

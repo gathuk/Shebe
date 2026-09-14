@@ -611,24 +611,29 @@ async function searchKenyaIntel(name: string): Promise<{
   };
 }
 
-// Social platform profile searches (global, not Kenya-specific)
+// Social platform profile searches — one DDG query, results split by domain
 async function searchSocialProfiles(name: string): Promise<{
   linkedin:  Record<string, unknown>;
   instagram: Record<string, unknown>;
   facebook:  Record<string, unknown>;
   tiktok:    Record<string, unknown>;
 }> {
-  const [linkedin, instagram, facebook, tiktok] = await Promise.allSettled([
-    scrapeDuckDuckGoHtml(`"${name}" site:linkedin.com/in`),
-    scrapeDuckDuckGoHtml(`"${name}" site:instagram.com`),
-    scrapeDuckDuckGoHtml(`"${name}" site:facebook.com`),
-    scrapeDuckDuckGoHtml(`"${name}" site:tiktok.com`),
-  ]);
+  const combined = `"${name}" (site:linkedin.com/in OR site:instagram.com OR site:facebook.com OR site:tiktok.com)`;
+  let raw: Record<string, unknown>;
+  try {
+    raw = await scrapeDuckDuckGoHtml(combined);
+  } catch {
+    raw = { results: [] };
+  }
+  const allResults = (raw.results as Array<{ url?: string; title?: string; snippet?: string }>) ?? [];
+  const bucket = (domain: string) => ({
+    results: allResults.filter(r => typeof r.url === "string" && r.url.includes(domain)),
+  });
   return {
-    linkedin:  linkedin.status  === "fulfilled" ? linkedin.value  : { results: [] },
-    instagram: instagram.status === "fulfilled" ? instagram.value : { results: [] },
-    facebook:  facebook.status  === "fulfilled" ? facebook.value  : { results: [] },
-    tiktok:    tiktok.status    === "fulfilled" ? tiktok.value    : { results: [] },
+    linkedin:  bucket("linkedin.com"),
+    instagram: bucket("instagram.com"),
+    facebook:  bucket("facebook.com"),
+    tiktok:    bucket("tiktok.com"),
   };
 }
 
@@ -1334,21 +1339,14 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
 
 // ── Hybrid OSINT ─────────────────────────────────────────────────────────────
 
-async function gatherHybrid(input: { name?: string; email?: string; phone?: string }): Promise<Record<string, unknown>> {
-  const name = (input.name ?? "").trim();
-  const email = (input.email ?? "").trim();
-  const phone = (input.phone ?? "").trim();
-
-  if (!name && !email && !phone) {
-    return { error: "Provide at least one of: name, email, phone", valid: false };
-  }
-
-  const [nameResult, emailResult, phoneResult] = await Promise.all([
-    name ? gatherName(name) : Promise.resolve(null),
-    email ? gatherEmail(email) : Promise.resolve(null),
-    phone ? gatherPhone(phone) : Promise.resolve(null),
-  ]);
-
+function assembleHybrid(
+  name: string,
+  email: string,
+  phone: string,
+  nameResult: Record<string, unknown> | null,
+  emailResult: Record<string, unknown> | null,
+  phoneResult: Record<string, unknown> | null,
+): Record<string, unknown> {
   const enc = encodeURIComponent;
   const terms: string[] = [];
   if (name) terms.push(`"${name}"`);
@@ -1376,15 +1374,12 @@ async function gatherHybrid(input: { name?: string; email?: string; phone?: stri
     const e164 = (phoneResult?.["formats"] as Record<string, string> | undefined)?.["E.164"] ?? phone;
     crossDorks["Name + Phone (M-Pesa/Paybill)"] = `https://www.google.com/search?q=${enc(`"${name}" "${e164}" (mpesa OR paybill OR till)`)}`;
   }
-  if (name && email) {
-    crossDorks["Name + Email"] = `https://www.google.com/search?q=${enc(`"${name}" "${email}"`)}`;
-  }
+  if (name && email) crossDorks["Name + Email"] = `https://www.google.com/search?q=${enc(`"${name}" "${email}"`)}`;
   if (email && phone) {
     const e164 = (phoneResult?.["formats"] as Record<string, string> | undefined)?.["E.164"] ?? phone;
     crossDorks["Email + Phone"] = `https://www.google.com/search?q=${enc(`"${email}" "${e164}"`)}`;
   }
 
-  // Confidence: how many independent identifiers agree on key signals
   const matchSignals: string[] = [];
   if (name && email) matchSignals.push("Name and email both provided — cross-check social profiles for matching identity");
   if (name && phone) matchSignals.push("Name and phone both provided — cross-check messaging apps and classifieds for matching identity");
@@ -1407,6 +1402,24 @@ async function gatherHybrid(input: { name?: string; email?: string; phone?: stri
       google_dorks: crossDorks,
     },
   };
+}
+
+async function gatherHybrid(input: { name?: string; email?: string; phone?: string }): Promise<Record<string, unknown>> {
+  const name = (input.name ?? "").trim();
+  const email = (input.email ?? "").trim();
+  const phone = (input.phone ?? "").trim();
+
+  if (!name && !email && !phone) {
+    return { error: "Provide at least one of: name, email, phone", valid: false };
+  }
+
+  const [nameResult, emailResult, phoneResult] = await Promise.all([
+    name ? gatherName(name) : Promise.resolve(null),
+    email ? gatherEmail(email) : Promise.resolve(null),
+    phone ? gatherPhone(phone) : Promise.resolve(null),
+  ]);
+
+  return assembleHybrid(name, email, phone, nameResult, emailResult, phoneResult);
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
@@ -1438,8 +1451,12 @@ export default async (req: Request, _context: Context) => {
     });
   }
 
-  let result: Record<string, unknown>;
-  let query: string;
+  const sseHeaders = {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "X-Accel-Buffering": "no",
+    "Access-Control-Allow-Origin": "*",
+  };
 
   if (queryType === "hybrid") {
     const name = (data.name ?? "").trim();
@@ -1451,20 +1468,57 @@ export default async (req: Request, _context: Context) => {
         headers: { "Content-Type": "application/json" },
       });
     }
-    query = [name, email, phone].filter(Boolean).join(" / ");
-    result = await gatherHybrid({ name, email, phone });
-  } else {
-    query = (data.query ?? "").trim();
-    if (!query) {
-      return new Response(JSON.stringify({ error: "Search query is required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    if (queryType === "email") result = await gatherEmail(query);
-    else if (queryType === "phone") result = await gatherPhone(query);
-    else result = await gatherName(query);
+    const query = [name, email, phone].filter(Boolean).join(" / ");
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        const enc = new TextEncoder();
+        const send = (obj: unknown) =>
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+
+        try {
+          let nameResult: Record<string, unknown> | null = null;
+          let emailResult: Record<string, unknown> | null = null;
+          let phoneResult: Record<string, unknown> | null = null;
+
+          const nameP = name
+            ? gatherName(name).then(r => { nameResult = r; send({ type: "progress", step: "name", label: "Name intelligence gathered" }); })
+            : Promise.resolve();
+          const emailP = email
+            ? gatherEmail(email).then(r => { emailResult = r; send({ type: "progress", step: "email", label: "Email intelligence gathered" }); })
+            : Promise.resolve();
+          const phoneP = phone
+            ? gatherPhone(phone).then(r => { phoneResult = r; send({ type: "progress", step: "phone", label: "Phone intelligence gathered" }); })
+            : Promise.resolve();
+
+          await Promise.all([nameP, emailP, phoneP]);
+
+          const result = assembleHybrid(name, email, phone, nameResult, emailResult, phoneResult);
+          result["meta"] = { generated_at: new Date().toISOString(), query_type: "hybrid", query };
+          send({ type: "result", data: result });
+        } catch (err) {
+          send({ type: "error", error: "Internal server error during intelligence gathering" });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, { status: 200, headers: sseHeaders });
   }
+
+  let result: Record<string, unknown>;
+  let query: string;
+  query = (data.query ?? "").trim();
+  if (!query) {
+    return new Response(JSON.stringify({ error: "Search query is required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (queryType === "email") result = await gatherEmail(query);
+  else if (queryType === "phone") result = await gatherPhone(query);
+  else result = await gatherName(query);
 
   result["meta"] = {
     generated_at: new Date().toISOString(),
