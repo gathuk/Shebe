@@ -174,6 +174,53 @@ will come out flagged as unpriced -- that's expected, since
 this script is to prove the pipeline's plumbing works end-to-end, not to
 produce a real quote.
 
+## Weekly summary email
+
+A scheduled digest runs every Monday at 06:00 UTC (09:00 Nairobi/EAT) via
+`.github/workflows/tender_weekly_summary.yml`, which calls
+`tender_intel/scripts/send_weekly_summary.py`. It runs ingestion fresh
+(ephemeral in-memory DB -- see the script's docstring for why this is a
+"currently open" snapshot rather than a "new this week" delta), then emails
+a plain-text summary: total open ICT-relevant tenders, which close within
+21 days, a per-category breakdown, and -- importantly -- any source that
+errored during that run, so a scraper that needs its selectors re-verified
+against the live site (see "Live scraping" above) shows up in the email
+instead of failing silently.
+
+This uses plain SMTP with a Gmail "App Password", not the Gmail API/OAuth
+stack that `email/queue.py::send_via_gmail_api()` is a stub for -- App
+Passwords are far simpler to drop into a scheduled CI job as two secrets.
+
+**Setup:**
+
+1. On the Google account the digest should send from, enable 2-Step
+   Verification if not already on, then go to Google Account > Security >
+   2-Step Verification > App passwords, and generate one (name it something
+   like "Skystar tender_intel weekly summary").
+2. In the GitHub repo: Settings > Secrets and variables > Actions, add two
+   **secrets**:
+   - `GMAIL_ADDRESS` -- the sending account's email address.
+   - `GMAIL_APP_PASSWORD` -- the app password generated in step 1.
+3. Optionally add a repo **variable** (not secret) `SUMMARY_RECIPIENTS`
+   with a comma-separated recipient list. If omitted, it defaults to
+   `info@skystar.co.ke` (see the workflow file).
+4. Test it immediately rather than waiting for Monday: repo's Actions tab >
+   "Tender Intel weekly summary" > "Run workflow".
+
+To run it locally instead of via CI:
+
+```bash
+GMAIL_ADDRESS=you@gmail.com GMAIL_APP_PASSWORD=xxxxxxxxxxxxxxxx \
+  SUMMARY_RECIPIENTS=info@skystar.co.ke \
+  python tender_intel/scripts/send_weekly_summary.py
+```
+
+Because GitHub Actions runners have normal outbound internet access
+(unlike the sandbox this prototype was built in), this is also the first
+real opportunity to see whether the `sources/` connectors' selectors
+actually match the live sites -- watch the first few scheduled/manual runs
+for `SOURCE ERRORS` in the email, and fix connector selectors accordingly.
+
 ## Populating real data before this is submission-ready
 
 1. **Pricing:** edit `tender_intel/catalog/catalog.yaml`, filling in
