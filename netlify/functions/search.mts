@@ -1242,7 +1242,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
   const encodedName = enc(name);
 
   const usernameLinks: Record<string, Record<string, string>> = {};
-  for (const un of usernames.slice(0, 10)) {
+  for (const un of usernames.slice(0, 5)) {
     usernameLinks[un] = {
       "GitHub": `https://github.com/${un}`,
       "Twitter/X": `https://twitter.com/${un}`,
@@ -1275,13 +1275,13 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
       wikipedia_hits: wikiHits,
       usernames_checked: usernames.length,
     },
-    github_profiles: githubResults,
+    github_profiles: githubResults.filter((p) => p.found),
     github_found_count: foundCount,
-    reddit_profiles: redditResults,
+    reddit_profiles: redditResults.filter((p) => p.found),
     reddit_found_count: redditFoundCount,
-    keybase_profiles: keybaseResults,
+    keybase_profiles: keybaseResults.filter((p) => p.found),
     keybase_found_count: keybaseFoundCount,
-    devto_profiles: devtoResults,
+    devto_profiles: devtoResults.filter((p) => p.found),
     devto_found_count: devtoFoundCount,
     mastodon_accounts: mastodonResults,
     mastodon_found_count: mastodonFoundCount,
@@ -1482,13 +1482,33 @@ export default async (req: Request, _context: Context) => {
           let phoneResult: Record<string, unknown> | null = null;
 
           const nameP = name
-            ? gatherName(name).then(r => { nameResult = r; send({ type: "progress", step: "name", label: "Name intelligence gathered" }); })
+            ? gatherName(name).then(r => {
+                nameResult = r;
+                const gh = ((r["github_profiles"] as unknown[]) ?? []).length;
+                const sp = Object.keys((r["social_profiles"] as Record<string, unknown>) ?? {}).length;
+                const label = gh || sp
+                  ? `Name: ${gh} profile${gh !== 1 ? 's' : ''}, ${sp} social hit${sp !== 1 ? 's' : ''} found`
+                  : "Name intelligence gathered";
+                send({ type: "progress", step: "name", label, partial: { name: r } });
+              })
             : Promise.resolve();
           const emailP = email
-            ? gatherEmail(email).then(r => { emailResult = r; send({ type: "progress", step: "email", label: "Email intelligence gathered" }); })
+            ? gatherEmail(email).then(r => {
+                emailResult = r;
+                const breaches = ((r["haveibeenpwned"] as { breaches?: unknown[] })?.breaches ?? []).length;
+                const label = breaches
+                  ? `Email: ${breaches} breach${breaches !== 1 ? 'es' : ''} found`
+                  : "Email intelligence gathered";
+                send({ type: "progress", step: "email", label, partial: { email: r } });
+              })
             : Promise.resolve();
           const phoneP = phone
-            ? gatherPhone(phone).then(r => { phoneResult = r; send({ type: "progress", step: "phone", label: "Phone intelligence gathered" }); })
+            ? gatherPhone(phone).then(r => {
+                phoneResult = r;
+                const carrier = (r["carrier"] as string) || "";
+                const label = carrier ? `Phone: ${carrier} carrier identified` : "Phone intelligence gathered";
+                send({ type: "progress", step: "phone", label, partial: { phone: r } });
+              })
             : Promise.resolve();
 
           await Promise.all([nameP, emailP, phoneP]);
