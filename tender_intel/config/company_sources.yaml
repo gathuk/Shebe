@@ -1,0 +1,45 @@
+# Named companies/utilities whose own "tenders" or "procurement" web pages
+# should be watched, in addition to the government portals in sources/.
+#
+# These are ILLUSTRATIVE EXAMPLES ONLY. None of the URLs or CSS selectors
+# below have been verified against the live sites from this build
+# environment (no outbound network access here). Before enabling any entry
+# (flip `enabled: true`):
+#   1. Open the company's real current tenders/procurement page in a
+#      browser and confirm it still exists at the URL below.
+#   2. View source / inspect and update row_selector / title_selector /
+#      date_selector to match the actual markup.
+#   3. Run from a host with real outbound network access.
+#
+# See tender_intel/README.md, "Live scraping".
+
+companies:
+  - name: safaricom
+    display_name: Safaricom PLC
+    country: Kenya
+    base_url: https://www.safaricom.co.ke
+    listing_url: https://www.safaricom.co.ke/about/procurement/tenders
+    enabled: false
+    row_selector: "div.tender-listing-item, tr.tender-row"
+    title_selector: "a.tender-title, td.title a"
+    date_selector: "td.closing-date, .closing-date"
+
+  - name: kenya_power
+    display_name: Kenya Power and Lighting Company PLC (KPLC)
+    country: Kenya
+    base_url: https://www.kplc.co.ke
+    listing_url: https://www.kplc.co.ke/category/view/51/tenders
+    enabled: false
+    row_selector: "div.tender-item, tr.tender-row"
+    title_selector: "a"
+    date_selector: ".closing-date, td.deadline"
+
+  - name: kra
+    display_name: Kenya Revenue Authority (KRA)
+    country: Kenya
+    base_url: https://www.kra.go.ke
+    listing_url: https://www.kra.go.ke/notices/tenders
+    enabled: false
+    row_selector: "div.tender-notice, tr.tender-row"
+    title_selector: "a.tender-link, td.title a"
+    date_selector: ".closing-date, td.closing"

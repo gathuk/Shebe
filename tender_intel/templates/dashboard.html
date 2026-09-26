@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Skystar Tender Intelligence{% endblock %}
+{% block content %}
+<h1>Tender Dashboard</h1>
+<p class="subtitle">Discovered ICT/security/AV/solar tenders, ranked by relevance.</p>
+
+<div class="cards">
+  <div class="card"><div class="value">{{ total_tenders }}</div><div class="label">Total tenders</div></div>
+  <div class="card"><div class="value">{{ new_tenders }}</div><div class="label">New (unreviewed)</div></div>
+  <div class="card"><div class="value">{{ proposals_generated }}</div><div class="label">Proposals generated</div></div>
+</div>
+
+<h2>Tenders</h2>
+{% if tenders %}
+<table>
+  <tr>
+    <th>Title</th><th>Procuring entity</th><th>Source</th><th>Relevance</th>
+    <th>Closing</th><th>Status</th>
+  </tr>
+  {% for tender in tenders %}
+  <tr>
+    <td><a href="{{ url_for('tender_detail', tender_id=tender.id) }}">{{ tender.title }}</a></td>
+    <td>{{ tender.procuring_entity or '-' }}</td>
+    <td>{{ tender.source }}</td>
+    <td>{{ tender.relevance_score|int }}</td>
+    <td>{{ tender.closing_at.strftime('%d %b %Y') if tender.closing_at else '-' }}</td>
+    <td>
+      {% if tender.status == 'proposal_generated' %}
+      <span class="badge ok">{{ tender.status }}</span>
+      {% elif tender.status == 'new' %}
+      <span class="badge warn">{{ tender.status }}</span>
+      {% else %}
+      <span class="badge">{{ tender.status }}</span>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">
+  No tenders yet. Run <code>tender_intel.sources.ingest.run_ingest()</code> from an environment
+  with outbound network access to the real tender portals, or
+  <code>python tender_intel/scripts/demo_run.py</code> for a scripted schema/plumbing demo.
+</p>
+{% endif %}
+{% endblock %}

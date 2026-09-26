@@ -1,0 +1,39 @@
+Kenya Revenue Authority
+TENDER DOCUMENT
+
+Tender No: KRA/ICT/2026-2027/00123
+Tender For: Supply, Delivery, Installation, Testing and Commissioning of Network Security and Access Control Equipment
+Category: ICT Equipment, Network Security and Access Control Systems
+Procuring Entity: Kenya Revenue Authority (KRA)
+Closing Date and Time: 20th August 2026, 11:00 AM
+Tender Fee: KES 1,000 (non-refundable), payable to Kenya Revenue Authority
+Tender Security: KES 200,000.00 or an equivalent bank guarantee from a reputable bank, valid for 120 days from the closing date
+
+SECTION 1: SCOPE OF WORK
+
+The successful bidder shall supply, deliver, install, configure, test and commission the following:
+
+1. Supply, install and commission next-generation firewalls (Fortinet FortiGate 1800F series or equivalent), minimum throughput as per technical specifications, quantity 2 units.
+2. Supply and installation of biometric fingerprint access control terminals at all building entry points, quantity 8 units.
+3. Supply and installation of contactless IC/RFID access cards for staff, quantity 500 cards.
+4. Supply, install and configure a video management / access control software platform (e.g. Genetec Security Center or equivalent) covering all installed devices.
+5. Supply and installation of a UPS/inverter backup power system for the server room, minimum capacity as per technical specifications, quantity 1 unit.
+6. Training of at least 4 ICT staff on operation and maintenance of the installed systems.
+
+SECTION 2: ELIGIBILITY AND MANDATORY DOCUMENTS
+
+Bidders must submit the following mandatory documents, failure to which the bid will be deemed non-responsive:
+
+- Certificate of Incorporation
+- CR12 (Company Search)
+- KRA PIN Certificate
+- Tax Compliance Certificate
+- Confidential Business Questionnaire (CBQ)
+- Audited Accounts for the last two (2) financial years
+- Tender Security as specified above
+
+SECTION 3: EVALUATION CRITERIA
+
+Bids will be evaluated on mandatory eligibility, technical responsiveness, and financial price, in that order.
+
+END OF DOCUMENT

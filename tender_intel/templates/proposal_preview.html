@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Proposal #{{ proposal.id }} - Skystar Tender Intelligence{% endblock %}
+{% block content %}
+<h1>Proposal #{{ proposal.id }}</h1>
+<p class="subtitle">For: <a href="{{ url_for('tender_detail', tender_id=tender.id) }}">{{ tender.title }}</a></p>
+
+{% if proposal.unpriced_line_count %}
+<p><span class="badge danger">{{ proposal.unpriced_line_count }} unpriced line(s)</span>
+   -- this BOQ is NOT ready to submit until every line is priced from Skystar's current cost sheet.</p>
+{% else %}
+<p><span class="badge ok">Fully priced</span></p>
+{% endif %}
+
+<div class="cards">
+  <div class="card"><div class="value">KES {{ '%.2f'|format(proposal.subtotal) }}</div><div class="label">Subtotal</div></div>
+  <div class="card"><div class="value">KES {{ '%.2f'|format(proposal.contingency_amount) }}</div><div class="label">Contingency (10%)</div></div>
+  <div class="card"><div class="value">KES {{ '%.2f'|format(proposal.vat_amount) }}</div><div class="label">VAT (16%)</div></div>
+  <div class="card"><div class="value">KES {{ '%.2f'|format(proposal.grand_total) }}</div><div class="label">Grand total</div></div>
+</div>
+
+<h2>BOQ line items</h2>
+{% if line_items %}
+<table>
+  <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Catalog match</th><th>Unit price</th><th>Line total</th></tr>
+  {% for line in line_items %}
+  <tr>
+    <td>{{ line.description }}</td>
+    <td>{{ line.quantity }}</td>
+    <td>{{ line.unit }}</td>
+    <td>{{ line.catalog_key or 'no confident match' }}</td>
+    <td>{{ '%.2f'|format(line.unit_price) if line.price_available else 'TODO' }}</td>
+    <td>{{ '%.2f'|format(line.line_total) if line.price_available else 'UNPRICED' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No BOQ line items.</p>
+{% endif %}
+
+<h2>Actions</h2>
+{% if proposal.pdf_path %}
+<a href="{{ url_for('proposal_download', proposal_id=proposal.id) }}"><button type="button">Download PDF</button></a>
+{% else %}
+<p class="muted">No PDF generated yet.</p>
+{% endif %}
+
+<form class="inline" method="post" action="{{ url_for('queue_proposal_email', proposal_id=proposal.id) }}">
+  <input type="email" name="to_address" placeholder="procuring entity contact email">
+  <button type="submit">Queue email</button>
+</form>
+
+<h2>Email queue</h2>
+{% if email_items %}
+<table>
+  <tr><th>To</th><th>Subject</th><th>Status</th><th>Created</th></tr>
+  {% for item in email_items %}
+  <tr>
+    <td>{{ item.to_address }}</td>
+    <td>{{ item.subject }}</td>
+    <td>{{ item.status }}</td>
+    <td>{{ item.created_at.strftime('%d %b %Y %H:%M') if item.created_at else '-' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">
+  No emails queued yet. Sending itself is a documented stub in this prototype
+  (Gmail API OAuth not wired up) -- see tender_intel/email/queue.py.
+</p>
+{% endif %}
+{% endblock %}
