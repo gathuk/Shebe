@@ -299,7 +299,15 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
   if (username.includes(".") || username.includes("_"))
     usernameNotes.push("Username contains separator (firstname.lastname pattern likely)");
 
-  const [mx, txt, gravatar, breach, whoisData, ddg, bing, emailRep] = await Promise.all([
+  // Extract first name for analysis when username looks like firstname.lastname
+  let nameFirstPart: string | null = null;
+  if (username.includes(".") || username.includes("_")) {
+    const sep = username.includes(".") ? "." : "_";
+    const part = username.split(sep)[0].replace(/\d+$/, "");
+    if (part.length >= 2) nameFirstPart = part;
+  }
+
+  const [mx, txt, gravatar, breach, whoisData, ddg, bing, emailRep, registrations, nameAnalysis] = await Promise.all([
     getMxRecords(domain),
     getTxtRecords(domain),
     checkGravatar(email),
@@ -308,6 +316,8 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
     checkDuckDuckGo(email),
     checkBingSearch(email),
     checkEmailRep(email),
+    checkEmailRegistrations(email),
+    nameFirstPart ? checkNameAnalysis(nameFirstPart) : Promise.resolve(null),
   ]);
 
   const enc = encodeURIComponent;
@@ -326,6 +336,8 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
     whois: whoisData,
     breach_data: breach,
     email_rep: emailRep,
+    registered_accounts: registrations,
+    name_analysis: nameAnalysis,
     web_intel: { ddg, bing },
     search_links: {
       "Google (exact)": `https://www.google.com/search?q="${enc(email)}"`,
@@ -372,6 +384,201 @@ function numberTypeToString(type: string | undefined): string {
 }
 
 // ── Extra free live sources ───────────────────────────────────────────────────
+
+// Social account registration probes (Holehe-style)
+async function checkEmailRegistrations(email: string): Promise<Array<{
+  site: string; registered: boolean | null; url?: string;
+}>> {
+  const enc = encodeURIComponent;
+  const atIdx = email.lastIndexOf("@");
+  const username = email.substring(0, atIdx);
+
+  const checks: Array<{ site: string; profileUrl?: string; fn: () => Promise<boolean | null> }> = [
+    {
+      site: "Mozilla",
+      fn: async () => {
+        const r = await fetch("https://api.accounts.firefox.com/v1/account/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+          signal: AbortSignal.timeout(6000),
+        });
+        const d = await r.json() as Record<string, unknown>;
+        return d["exists"] === true;
+      },
+    },
+    {
+      site: "Chess.com",
+      profileUrl: `https://www.chess.com/member/${username}`,
+      fn: async () => {
+        const r = await fetch(`https://www.chess.com/callback/user/valid-email?email=${enc(email)}`, {
+          headers: { "User-Agent": "Mozilla/5.0" },
+          signal: AbortSignal.timeout(6000),
+        });
+        const d = await r.json() as Record<string, unknown>;
+        return d["valid"] === false; // false = email already taken
+      },
+    },
+    {
+      site: "Duolingo",
+      fn: async () => {
+        const r = await fetch(`https://www.duolingo.com/2017-06-30/users?email=${enc(email)}`, {
+          headers: { "User-Agent": "Mozilla/5.0" },
+          signal: AbortSignal.timeout(6000),
+        });
+        const d = await r.json() as Record<string, unknown>;
+        const users = d["users"];
+        return Array.isArray(users) && users.length > 0;
+      },
+    },
+    {
+      site: "Spotify",
+      fn: async () => {
+        const r = await fetch(
+          `https://spclient.wg.spotify.com/signup/public/v1/account?validate=1&email=${enc(email)}&displayname=test&platform=Android&key=142b583129b2df829de3202f41a18cce`,
+          { signal: AbortSignal.timeout(6000) }
+        );
+        const d = await r.json() as Record<string, unknown>;
+        return (d["status"] as number) === 1; // 1=taken, 20=available
+      },
+    },
+    {
+      site: "Imgur",
+      fn: async () => {
+        const r = await fetch("https://api.imgur.com/3/emailregcheck", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Authorization": "Client-ID 546c25a59c58ad7",
+          },
+          body: `email=${enc(email)}`,
+          signal: AbortSignal.timeout(6000),
+        });
+        const d = await r.json() as Record<string, unknown>;
+        const data = d["data"] as Record<string, unknown> | undefined;
+        return data?.["emailTaken"] === true;
+      },
+    },
+    {
+      site: "GitHub",
+      profileUrl: `https://github.com/${username}`,
+      fn: async () => {
+        const r = await fetch("https://github.com/users/check_email_availability.json", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "User-Agent": "Mozilla/5.0",
+          },
+          body: JSON.stringify({ email }),
+          signal: AbortSignal.timeout(6000),
+        });
+        if (r.status === 422) return true;
+        if (!r.ok) return null;
+        const d = await r.json() as Record<string, unknown>;
+        return d["available"] === false;
+      },
+    },
+    {
+      site: "Patreon",
+      fn: async () => {
+        // Password login probe: wrong-password error codes distinguish registered vs not
+        const r = await fetch("https://www.patreon.com/api/login?include=&json-api-version=1.0", {
+          method: "POST",
+          headers: { "Content-Type": "application/vnd.api+json" },
+          body: JSON.stringify({ data: { type: "user", attributes: { email, password: "INVALID_SHEBE" } } }),
+          signal: AbortSignal.timeout(6000),
+        });
+        const d = await r.json() as Record<string, unknown>;
+        const errors = d["errors"] as Array<Record<string, unknown>> | undefined;
+        const code = errors?.[0]?.["code"] as number | undefined;
+        if (code === 430) return true;  // wrong password = account exists
+        if (code === 432) return false; // no account with that email
+        return null;
+      },
+    },
+    {
+      site: "Proton Mail",
+      fn: async () => {
+        const r = await fetch(`https://account.proton.me/api/core/v4/users?Email=${enc(email)}`, {
+          headers: { "x-pm-appversion": "Other", "User-Agent": "Mozilla/5.0" },
+          signal: AbortSignal.timeout(6000),
+        });
+        const d = await r.json() as Record<string, unknown>;
+        // Code 2028 = existing, 422 = available
+        return d["Code"] === 2028;
+      },
+    },
+    {
+      site: "Adobe",
+      fn: async () => {
+        const r = await fetch(`https://accounts.adobe.com/check?email=${enc(email)}&check_type=email_exists`, {
+          headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+          signal: AbortSignal.timeout(6000),
+        });
+        if (!r.ok) return null;
+        const d = await r.json() as Record<string, unknown>;
+        return d["exists"] === true || d["account_exists"] === true;
+      },
+    },
+    {
+      site: "Snapchat",
+      fn: async () => {
+        const r = await fetch("https://app.snapchat.com/web/deeplink/snapcode", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `email=${enc(email)}&type=EMAIL`,
+          signal: AbortSignal.timeout(6000),
+        });
+        return r.status === 200;
+      },
+    },
+    {
+      site: "Pinterest",
+      fn: async () => {
+        const r = await fetch("https://www.pinterest.com/_ngjs/resource/EmailCheckResource/get/", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `data=%7B%22options%22%3A%7B%22email%22%3A%22${enc(email)}%22%7D%2C%22context%22%3A%7B%7D%7D`,
+          signal: AbortSignal.timeout(6000),
+        });
+        const d = await r.json() as Record<string, unknown>;
+        const data = d["data"] as Record<string, unknown> | undefined;
+        return data?.["is_available"] === false;
+      },
+    },
+    {
+      site: "Freelancer",
+      fn: async () => {
+        const r = await fetch(`https://www.freelancer.com/api/users/0.1/users/?compact=true&query=${enc(email)}`, {
+          headers: { "User-Agent": "Mozilla/5.0" },
+          signal: AbortSignal.timeout(6000),
+        });
+        const d = await r.json() as Record<string, unknown>;
+        const result = d["result"] as Record<string, unknown> | undefined;
+        const users = result?.["users"];
+        return typeof users === "object" && users !== null && Object.keys(users).length > 0;
+      },
+    },
+  ];
+
+  const results = await Promise.allSettled(
+    checks.map(async (c) => {
+      try {
+        const registered = await c.fn();
+        return { site: c.site, registered, url: c.profileUrl };
+      } catch {
+        return { site: c.site, registered: null as null, url: c.profileUrl };
+      }
+    })
+  );
+
+  return results.map((r) =>
+    r.status === "fulfilled"
+      ? r.value
+      : { site: checks[results.indexOf(r)]?.site ?? "unknown", registered: null }
+  );
+}
 
 // EmailRep.io — free, no key (10 req/day): reputation + linked profiles + first/last seen
 async function checkEmailRep(email: string): Promise<Record<string, unknown>> {
