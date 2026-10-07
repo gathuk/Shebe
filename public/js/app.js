@@ -372,6 +372,52 @@ function renderEmail(d, targetEl, grid) {
   }
   grid.appendChild(card('Gravatar Profile', 'fa-user-circle', 'icon-purple', gravatarContent));
 
+  // --- Registered Accounts
+  const regs = d.registered_accounts;
+  if (Array.isArray(regs) && regs.length) {
+    const registered = regs.filter(r => r.registered === true);
+    const unknown    = regs.filter(r => r.registered === null);
+    const notFound   = regs.filter(r => r.registered === false);
+    const summary = registered.length
+      ? `<div class="reg-summary reg-summary-found"><i class="fa-solid fa-circle-check"></i> Found on <strong>${registered.length}</strong> platform${registered.length !== 1 ? 's' : ''}</div>`
+      : `<div class="reg-summary"><i class="fa-solid fa-magnifying-glass"></i> No registrations confirmed</div>`;
+    const makeChip = (r) => {
+      const cls = r.registered === true ? 'registered' : r.registered === false ? 'not-registered' : 'unknown';
+      const icon = r.registered === true ? 'fa-check' : r.registered === false ? 'fa-xmark' : 'fa-question';
+      const inner = `<i class="fa-solid ${esc(icon)}"></i> <span>${esc(r.site)}</span>`;
+      return r.url && r.registered
+        ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" class="reg-chip ${cls}">${inner}</a>`
+        : `<div class="reg-chip ${cls}">${inner}</div>`;
+    };
+    const chips = [...registered, ...notFound, ...unknown].map(makeChip).join('');
+    const regContent = `
+      ${summary}
+      <div class="reg-grid">${chips}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:10px">
+        <i class="fa-solid fa-circle-info"></i> Probes password-reset / registration endpoints. Results may vary — confirm manually.
+      </div>`;
+    grid.appendChild(card('Registered Accounts', 'fa-globe', 'icon-green', regContent));
+  }
+
+  // --- Name Analysis (for firstname.lastname emails)
+  const na = d.name_analysis;
+  if (na && (na.gender || na.age || na.nationality)) {
+    let naContent = '';
+    if (na.gender?.gender) {
+      const gColor = na.gender.gender === 'male' ? 'var(--blue)' : 'var(--purple)';
+      naContent += row('Likely Gender', `${na.gender.gender} (${Math.round((na.gender.probability || 0) * 100)}% confidence, n=${na.gender.count || 0})`);
+    }
+    if (na.age?.age) naContent += row('Estimated Age', `~${na.age.age} (n=${na.age.count || 0})`);
+    if (na.nationality?.length) {
+      const top = na.nationality.slice(0, 3).map(n => `${n.country_id} ${Math.round((n.probability || 0) * 100)}%`).join(', ');
+      naContent += row('Likely Nationality', top);
+    }
+    if (naContent) {
+      naContent += `<div style="font-size:11px;color:var(--text3);margin-top:8px"><i class="fa-solid fa-circle-info"></i> Inferred from username first name — statistical only</div>`;
+      grid.appendChild(card('Username Name Analysis', 'fa-chart-pie', 'icon-purple', naContent));
+    }
+  }
+
   // --- Data Breaches
   const breach = d.breach_data;
   let breachContent = '';
