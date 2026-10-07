@@ -1,0 +1,51 @@
+# Skystar Holdings Limited -- company profile used by proposal/builder.py.
+#
+# Contact info below is real public information. Statutory/registration
+# fields are intentionally left as TODO placeholders -- see
+# tender_intel/documents/statutory/README.md. Do NOT fill these in with
+# invented-looking values; only real values sourced from Skystar's own
+# records belong here.
+
+legal_name: Skystar Holdings Limited
+trading_name: Skystar Holdings
+country: Kenya
+website: www.skystarholdings.co.ke
+email: info@skystar.co.ke
+phone: "+254 721 350 215"
+
+registration:
+  certificate_of_incorporation_no: "TODO-CERT-OF-INCORPORATION-NO"
+  cr12_no: "TODO-CR12-NO"
+  kra_pin: "TODO-KRA-PIN"
+  tax_compliance_certificate_no: "TODO-TCC-NO"
+  vat_registration_no: "TODO-VAT-NO"
+  agpo_certificate_no: "TODO-AGPO-CERT-NO"
+  physical_address: "TODO-PHYSICAL-ADDRESS"
+  postal_address: "TODO-POSTAL-ADDRESS"
+  bank_name: "TODO-BANK-NAME"
+  bank_account_name: "TODO-BANK-ACCOUNT-NAME"
+  bank_account_number: "TODO-BANK-ACCOUNT-NUMBER"
+  bank_branch: "TODO-BANK-BRANCH"
+  bank_swift_code: "TODO-SWIFT-CODE"
+
+team:
+  - name: Gathu Kamau
+    role: AI Project Lead / Principal
+  - name: Ngwele Nzuki
+    role: Technical Review
+  - name: Oliver Opiyo
+    role: Team Member
+
+business_lines:
+  - "Networking & Cybersecurity (Fortinet firewalls, structured cabling, network security)"
+  - "Servers & Enterprise Computing (Windows Server, Apple workstations, data center)"
+  - "Power Backup & Solar (Victron inverters, solar water pumps, UPS/inverter systems)"
+  - "Security Systems (Hikvision access control & CCTV, Genetec VMS/access software)"
+  - "Audio-Visual & Broadcast (Blackmagic, Panasonic, Shure, ETC, Vizrt, LED video walls)"
+  - "Data Capture (Zebra rugged mobile computers and label printers)"
+
+profile_summary: >
+  Skystar Holdings Limited is a Kenya-based ICT, security, audio-visual and
+  solar systems integrator, delivering networking and cybersecurity,
+  enterprise computing, power backup/solar, security systems, and
+  audio-visual/broadcast solutions across Kenya and East Africa.
