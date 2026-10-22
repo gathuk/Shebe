@@ -52,6 +52,7 @@ const STEP_LABELS = {
   name:  'Gathering name intelligence…',
   email: 'Gathering email intelligence…',
   phone: 'Gathering phone intelligence…',
+  agent: 'Agent synthesizing intelligence…',
 };
 
 async function runSearch(type, fields) {
@@ -88,7 +89,7 @@ async function runSearch(type, fields) {
       const decoder = new TextDecoder();
       let buffer = '';
       let stepIdx = 0;
-      const stepEls = ['step1', 'step2', 'step3'];
+      const stepEls = ['step1', 'step2', 'step3', 'step4'];
 
       function advanceStep(label) {
         if (stepIdx > 0 && stepIdx - 1 < stepEls.length) {
@@ -124,6 +125,9 @@ async function runSearch(type, fields) {
             cacheSet(ck, msg.data);
             renderReport(msg.data, type);
             return;
+          } else if (msg.type === 'agent_question') {
+            showClarificationUI(msg.questions, msg.gathered_data, ck);
+            return;
           } else if (msg.type === 'error') {
             showError(msg.error || 'Server error');
             return;
@@ -147,9 +151,10 @@ async function runSearch(type, fields) {
 function showLoading() {
   hide('resultsSection');
   show('loadingState');
-  const icons = ['fa-solid fa-check-circle', 'fa-solid fa-circle-notch fa-spin', 'fa-regular fa-circle'];
-  ['step1','step2','step3'].forEach((id, i) => {
+  const icons = ['fa-solid fa-check-circle', 'fa-solid fa-circle-notch fa-spin', 'fa-regular fa-circle', 'fa-regular fa-circle'];
+  ['step1','step2','step3','step4'].forEach((id, i) => {
     const el = document.getElementById(id);
+    if (!el) return;
     el.classList.remove('active', 'done');
     el.querySelector('i').className = icons[i];
   });
@@ -195,6 +200,91 @@ function showError(msg) {
   document.getElementById('targetCard').innerHTML = '';
   document.getElementById('reportContent').innerHTML = '';
   show('resultsSection');
+}
+
+// ── Agent Clarification UI ────────────────────────────────────
+function showClarificationUI(questions, gatheredData, cacheKey) {
+  hide('loadingState');
+  const targetCard = document.getElementById('targetCard');
+  const content    = document.getElementById('reportContent');
+  const t = gatheredData.target || {};
+
+  targetCard.innerHTML = `
+    <div class="target-avatar-placeholder"><i class="fa-solid fa-robot"></i></div>
+    <div class="target-info">
+      <div class="target-label">Agent Needs Clarification</div>
+      <div class="target-name">${esc([t.name, t.email, t.phone].filter(Boolean).join(' / ') || 'Intelligence Subject')}</div>
+    </div>`;
+
+  const qHtml = questions.map((q, i) => `
+    <div class="agent-question" id="aq-${esc(q.id)}">
+      <div class="agent-question-label"><i class="fa-solid fa-circle-question"></i> ${esc(q.text)}</div>
+      <div class="agent-question-options">
+        ${(q.options || []).map((opt, j) => `
+          <label class="agent-answer-option">
+            <input type="radio" name="${esc(q.id)}" value="${esc(opt)}" />
+            <span>${esc(opt)}</span>
+          </label>`).join('')}
+        <label class="agent-answer-option">
+          <input type="radio" name="${esc(q.id)}" value="__other__" />
+          <span>Other:</span>
+          <input type="text" class="agent-other-text" placeholder="Type your answer…" />
+        </label>
+      </div>
+    </div>`).join('');
+
+  content.innerHTML = `
+    <div class="agent-clarification-card" style="grid-column:1/-1">
+      <div class="agent-clarification-header">
+        <i class="fa-solid fa-robot"></i>
+        <div>
+          <div class="agent-clarification-title">The agent found ambiguous data and needs a few answers to complete the report.</div>
+          <div class="agent-clarification-sub">Answer what you can — fields you leave blank will be skipped.</div>
+        </div>
+      </div>
+      ${qHtml}
+      <button class="search-btn" id="agentSubmitBtn" onclick="submitAgentAnswers(${JSON.stringify(questions).replace(/</g,'\\u003c')}, window.__agentGatheredData, '${cacheKey}')">
+        <span class="btn-text">Complete Report</span>
+        <i class="fa-solid fa-arrow-right btn-icon"></i>
+      </button>
+    </div>`;
+
+  window.__agentGatheredData = gatheredData;
+  show('resultsSection');
+}
+
+async function submitAgentAnswers(questions, gatheredData, ck) {
+  const btn = document.getElementById('agentSubmitBtn');
+  if (btn) { btn.disabled = true; btn.querySelector('.btn-text').textContent = 'Generating report…'; }
+
+  const answers = questions.map(q => {
+    const radios = document.querySelectorAll(`input[name="${CSS.escape(q.id)}"]:checked`);
+    let answer = '';
+    radios.forEach(r => {
+      if (r.value === '__other__') {
+        const txt = r.parentElement.querySelector('.agent-other-text');
+        answer = txt ? txt.value.trim() : '';
+      } else {
+        answer = r.value;
+      }
+    });
+    return { id: q.id, question: q.text, answer };
+  }).filter(a => a.answer);
+
+  try {
+    const resp = await fetch('/api/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'agent_complete', gathered_data: gatheredData, agent_answers: answers }),
+    });
+    if (!resp.ok) { showError('Agent synthesis failed — please try again.'); return; }
+    const data = await resp.json();
+    lastResult = data;
+    try { localStorage.setItem(ck, JSON.stringify({ ts: Date.now(), data })); } catch {}
+    renderReport(data, 'hybrid');
+  } catch {
+    showError('Network error during agent synthesis.');
+  }
 }
 
 // ── Render ───────────────────────────────────────────────────
@@ -986,6 +1076,31 @@ function renderOsintDoc(d, targetEl, grid) {
       <div class="target-name">${esc(t.name || t.email || t.phone || 'Unknown Subject')}</div>
       <div class="target-tags">${headerTags}</div>
     </div>`;
+
+  // ── Agent Brief ───────────────────────────────────────────
+  const ar = d.agent_report;
+  if (ar && ar.type === 'report') {
+    const confClass = ar.confidence === 'HIGH' ? 'conf-high' : ar.confidence === 'MEDIUM' ? 'conf-medium' : 'conf-low';
+    const kfHtml = (ar.key_findings || []).map(f => `<li class="agent-finding-item">${esc(f)}</li>`).join('');
+    const methHtml = (ar.methodology || []).map(m => `<li>${esc(m)}</li>`).join('');
+    const briefEl = document.createElement('div');
+    briefEl.className = 'agent-brief-card';
+    briefEl.innerHTML = `
+      <div class="agent-brief-header">
+        <div class="agent-brief-title-row">
+          <i class="fa-solid fa-robot"></i>
+          <span class="agent-brief-title">AI Intelligence Brief</span>
+          <span class="confidence-badge ${confClass}">${esc(ar.confidence || 'UNKNOWN')} CONFIDENCE</span>
+        </div>
+        ${ar.subject_summary ? `<p class="agent-subject-summary">${esc(ar.subject_summary)}</p>` : ''}
+      </div>
+      <div class="agent-brief-body">
+        <div class="agent-narrative">${ar.narrative ? ar.narrative.split('\n\n').map(p => p.trim() ? `<p>${esc(p.trim())}</p>` : '').join('') : ''}</div>
+        ${kfHtml ? `<div class="agent-key-findings"><div class="agent-section-label"><i class="fa-solid fa-star"></i> Key Findings</div><ul class="agent-findings-list">${kfHtml}</ul></div>` : ''}
+        ${methHtml ? `<div class="agent-methodology"><div class="agent-section-label"><i class="fa-solid fa-flask"></i> Methodology</div><ul class="agent-method-list">${methHtml}</ul></div>` : ''}
+      </div>`;
+    grid.insertAdjacentElement('afterbegin', briefEl);
+  }
 
   // ── Counts ────────────────────────────────────────────────
   const ghCount     = (nm.github_profiles   || []).filter(p => p.found).length;
