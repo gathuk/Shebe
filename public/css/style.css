@@ -1493,6 +1493,182 @@ a.reg-chip.registered:hover { opacity: 0.8; }
   color: var(--green);
 }
 
+/* ── Agent Brief Card ──────────────────────────────────────── */
+.agent-brief-card {
+  grid-column: 1 / -1;
+  background: linear-gradient(135deg, #0d1f3c 0%, #111827 60%);
+  border: 1px solid #2563eb55;
+  border-radius: var(--radius);
+  padding: 24px 28px;
+  margin-bottom: 8px;
+}
+
+.agent-brief-header {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+  margin-bottom: 18px;
+}
+
+.agent-brief-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.agent-brief-title-row .fa-robot {
+  font-size: 18px;
+  color: var(--accent2);
+}
+
+.agent-brief-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent2);
+  letter-spacing: .5px;
+}
+
+.confidence-badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  text-transform: uppercase;
+}
+.confidence-badge.conf-high   { background: rgba(16,185,129,.15); color: var(--green); border: 1px solid rgba(16,185,129,.3); }
+.confidence-badge.conf-medium { background: rgba(245,158,11,.15); color: var(--yellow); border: 1px solid rgba(245,158,11,.3); }
+.confidence-badge.conf-low    { background: rgba(239,68,68,.15);  color: var(--red);   border: 1px solid rgba(239,68,68,.3); }
+
+.agent-subject-summary {
+  font-size: 14px;
+  color: var(--text2);
+  line-height: 1.6;
+}
+
+.agent-brief-body { display: flex; flex-direction: column; gap: 18px; }
+
+.agent-narrative p {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.75;
+  margin-bottom: 10px;
+}
+.agent-narrative p:last-child { margin-bottom: 0; }
+
+.agent-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-findings-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.agent-finding-item {
+  font-size: 13px;
+  color: var(--text);
+  padding: 6px 10px;
+  background: rgba(59,130,246,.08);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+}
+
+.agent-method-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.agent-method-list li {
+  font-size: 12px;
+  color: var(--text2);
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 10px;
+}
+
+/* ── Agent Clarification Card ──────────────────────────────── */
+.agent-clarification-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 32px;
+  max-width: 700px;
+  margin: 32px auto;
+}
+
+.agent-clarification-header { margin-bottom: 24px; }
+
+.agent-clarification-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agent-clarification-sub {
+  font-size: 14px;
+  color: var(--text2);
+}
+
+.agent-question { margin-bottom: 22px; }
+
+.agent-question-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.agent-question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agent-answer-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  font-size: 13px;
+  color: var(--text);
+}
+.agent-answer-option:hover { border-color: var(--accent); background: rgba(59,130,246,.06); }
+.agent-answer-option input[type="radio"] { accent-color: var(--accent); }
+
+.agent-other-text {
+  margin-top: 8px;
+  width: 100%;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: var(--sans);
+}
+.agent-other-text:focus { outline: none; border-color: var(--accent); }
+
 /* ── Print styles ──────────────────────────────────────────── */
 @media print {
   .site-header, .hero, .search-section, .report-actions, .site-footer { display: none !important; }

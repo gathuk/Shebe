@@ -1629,6 +1629,88 @@ async function gatherHybrid(input: { name?: string; email?: string; phone?: stri
   return assembleHybrid(name, email, phone, nameResult, emailResult, phoneResult);
 }
 
+// ── Agent Intelligence Synthesis ─────────────────────────────────────────────
+
+function redactForAgent(obj: unknown, depth = 0): unknown {
+  const OMIT = new Set(["search_links", "google_dorks", "username_profile_links"]);
+  if (depth > 5) return typeof obj === "string" ? obj.slice(0, 200) : obj;
+  if (Array.isArray(obj)) return obj.slice(0, 8).map(i => redactForAgent(i, depth + 1));
+  if (obj && typeof obj === "object") {
+    return Object.fromEntries(
+      Object.entries(obj as Record<string, unknown>)
+        .filter(([k]) => !OMIT.has(k))
+        .map(([k, v]) => [k, redactForAgent(v, depth + 1)])
+    );
+  }
+  return obj;
+}
+
+type AgentQuestions = { type: "questions"; questions: Array<{ id: string; text: string; options: string[] }> };
+type AgentReport    = { type: "report"; narrative: string; key_findings: string[]; confidence: string; methodology: string[]; subject_summary: string };
+type AgentError     = { type: "error"; error: string };
+
+async function synthesizeWithAgent(
+  name: string,
+  email: string,
+  phone: string,
+  gathered: Record<string, unknown>,
+  answers?: Array<{ id: string; question: string; answer: string }>
+): Promise<AgentQuestions | AgentReport | AgentError> {
+  const apiKey = process.env["ANTHROPIC_API_KEY"];
+  if (!apiKey) return { type: "error", error: "ANTHROPIC_API_KEY not configured" };
+
+  const answersBlock = answers?.length
+    ? `\n\nAnalyst clarifications:\n${answers.map(a => `Q: ${a.question}\nA: ${a.answer}`).join("\n")}`
+    : "";
+
+  const prompt = `You are an OSINT intelligence analyst. Analyze the gathered open-source intelligence and produce a professional brief.
+
+Return ONLY valid JSON in exactly one of these two formats:
+
+If critical clarification needed (only when ambiguity fundamentally changes the assessment):
+{"type":"questions","questions":[{"id":"q1","text":"...","options":["Option A","Option B","Unsure"]}]}
+
+If ready to report (the default — prefer this):
+{"type":"report","narrative":"2-4 paragraph intelligence brief","key_findings":["..."],"confidence":"high|medium|low","methodology":["..."],"subject_summary":"One-line summary of who this person appears to be"}
+
+Rules:
+- Default to generating the report immediately — only ask questions for a truly ambiguous situation (e.g. two distinct people with this name in different cities)
+- Maximum 3 questions if asking; each must have 2-4 options
+- Narrative: factual, professional, note what is absent or uncertain; do not include raw URLs
+- If little data was found, say so clearly and list what was attempted
+- Kenya/East Africa context is relevant for location and demographic inference
+
+Subject: name="${name}", email="${email}", phone="${phone}"${answersBlock}
+
+Intelligence data:
+${JSON.stringify(redactForAgent(gathered), null, 2)}`;
+
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1200,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      signal: AbortSignal.timeout(18000),
+    });
+    if (!resp.ok) return { type: "error", error: `Anthropic API ${resp.status}` };
+    const raw = await resp.json() as { content?: Array<{ type: string; text?: string }> };
+    const text = raw.content?.find(c => c.type === "text")?.text ?? "";
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return { type: "error", error: "Agent returned unparseable response" };
+    return JSON.parse(match[0]) as AgentQuestions | AgentReport;
+  } catch (e) {
+    return { type: "error", error: e instanceof Error ? e.message : "Agent synthesis failed" };
+  }
+}
+
 // ── Handler ──────────────────────────────────────────────────────────────────
 
 export default async (req: Request, _context: Context) => {
@@ -1722,7 +1804,16 @@ export default async (req: Request, _context: Context) => {
 
           const result = assembleHybrid(name, email, phone, nameResult, emailResult, phoneResult);
           result["meta"] = { generated_at: new Date().toISOString(), query_type: "hybrid", query };
-          send({ type: "result", data: result });
+
+          send({ type: "progress", step: "agent", label: "Agent synthesizing intelligence…" });
+          const agentAnalysis = await synthesizeWithAgent(name, email, phone, result);
+
+          if (agentAnalysis.type === "questions") {
+            send({ type: "agent_question", questions: agentAnalysis.questions, gathered_data: result });
+          } else {
+            if (agentAnalysis.type === "report") result["agent_report"] = agentAnalysis;
+            send({ type: "result", data: result });
+          }
         } catch (err) {
           send({ type: "error", error: "Internal server error during intelligence gathering" });
         } finally {
@@ -1732,6 +1823,22 @@ export default async (req: Request, _context: Context) => {
     });
 
     return new Response(stream, { status: 200, headers: sseHeaders });
+  }
+
+  // ── agent_complete: second-round synthesis with user answers ─
+  if (queryType === "agent_complete") {
+    const gatheredData = (data.gathered_data ?? {}) as Record<string, unknown>;
+    const agentAnswers = (data.agent_answers ?? []) as Array<{ id: string; question: string; answer: string }>;
+    const t = (gatheredData.target ?? {}) as Record<string, unknown>;
+    const agName  = String(t.name  ?? "");
+    const agEmail = String(t.email ?? "");
+    const agPhone = String(t.phone ?? "");
+    const agentReport = await synthesizeWithAgent(agName, agEmail, agPhone, gatheredData, agentAnswers);
+    const finalResult = { ...gatheredData, agent_report: agentReport };
+    return new Response(JSON.stringify(finalResult), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   let result: Record<string, unknown>;
