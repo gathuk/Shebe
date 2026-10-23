@@ -6,3 +6,16 @@ node_modules/
 netlimit/*.db
 netlimit/.venv/
 .pytest_cache/
+
+# tender_intel: never commit real statutory documents, copyrighted vendor
+# datasheets, or generated output.
+tender_intel/*.db
+tender_intel/.venv/
+tender_intel/documents/statutory/*
+!tender_intel/documents/statutory/.gitkeep
+!tender_intel/documents/statutory/README.md
+tender_intel/catalog/datasheets/*
+!tender_intel/catalog/datasheets/.gitkeep
+!tender_intel/catalog/datasheets/README.md
+tender_intel/demo_output/
+tender_intel/generated/
