@@ -307,7 +307,7 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
     if (part.length >= 2) nameFirstPart = part;
   }
 
-  const [mx, txt, gravatar, breach, whoisData, ddg, bing, emailRep, registrations, nameAnalysis] = await Promise.all([
+  const [mx, txt, gravatar, breach, whoisData, ddg, bing, firecrawl, emailRep, registrations, nameAnalysis] = await Promise.all([
     getMxRecords(domain),
     getTxtRecords(domain),
     checkGravatar(email),
@@ -315,6 +315,7 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
     isCorporate ? getRdapData(domain) : Promise.resolve({ note: "Skipped for major/known providers" }),
     checkDuckDuckGo(email),
     checkBingSearch(email),
+    checkFirecrawlSearch(`"${email}"`),
     checkEmailRep(email),
     checkEmailRegistrations(email),
     nameFirstPart ? checkNameAnalysis(nameFirstPart) : Promise.resolve(null),
@@ -338,7 +339,7 @@ async function gatherEmail(emailInput: string): Promise<Record<string, unknown>>
     email_rep: emailRep,
     registered_accounts: registrations,
     name_analysis: nameAnalysis,
-    web_intel: { ddg, bing },
+    web_intel: { ddg, bing, firecrawl },
     search_links: {
       "Google (exact)": `https://www.google.com/search?q="${enc(email)}"`,
       "Bing": `https://www.bing.com/search?q="${enc(email)}"`,
@@ -730,6 +731,32 @@ async function scrapeDuckDuckGoHtml(query: string): Promise<Record<string, unkno
     return { configured: true, source: "ddg", results, total_estimated: null };
   } catch (e: unknown) {
     return { configured: true, source: "ddg", error: e instanceof Error ? e.message : "failed", results: [] };
+  }
+}
+
+// Firecrawl Web Search — enriched web results (needs FIRECRAWL_API_KEY)
+async function checkFirecrawlSearch(query: string): Promise<Record<string, unknown>> {
+  const apiKey = Netlify.env.get("FIRECRAWL_API_KEY");
+  if (!apiKey) return { configured: false };
+  try {
+    const resp = await fetch("https://api.firecrawl.dev/v1/search", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query, limit: 5 }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) return { configured: true, error: `HTTP ${resp.status}` };
+    const data = await resp.json() as { success?: boolean; data?: Array<Record<string, unknown>> };
+    if (!data.success || !data.data) return { configured: true, error: "No results" };
+    const results = data.data.map(r => ({
+      title:       String(r.title       ?? r.url ?? ""),
+      snippet:     String(r.description ?? "").slice(0, 400),
+      url:         String(r.url         ?? ""),
+      display_url: String(r.url         ?? "").replace(/^https?:\/\//, "").slice(0, 60),
+    }));
+    return { configured: true, results };
+  } catch (e: unknown) {
+    return { configured: true, error: e instanceof Error ? e.message : "timeout" };
   }
 }
 
@@ -1209,14 +1236,15 @@ async function gatherPhone(phoneInput: string): Promise<Record<string, unknown>>
         `site:jiji.co.ke OR site:pigiame.co.ke OR site:tuko.co.ke OR ` +
         `site:standardmedia.co.ke OR site:nation.africa OR site:facebook.com OR site:mchanga.africa`;
 
-      const [reverse_lookup, numverify, ddg, bing, kenyaPhone] = await Promise.all([
+      const [reverse_lookup, numverify, ddg, bing, firecrawl, kenyaPhone] = await Promise.all([
         checkReversePhone(e164),
         checkNumVerify(e164),
         checkDuckDuckGo(e164),
         checkBingSearch(e164),
+        checkFirecrawlSearch(`"${e164}"`),
         isKenya ? scrapeDuckDuckGoHtml(kenyaPhoneQ) : Promise.resolve(null),
       ]);
-      return { reverse_lookup, numverify, web_intel: { ddg, bing }, kenya_phone_mentions: kenyaPhone };
+      return { reverse_lookup, numverify, web_intel: { ddg, bing, firecrawl }, kenya_phone_mentions: kenyaPhone };
     })(),
   };
 }
@@ -1423,7 +1451,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
   const parts = parseName(name);
   const usernames = generateUsernames(parts);
 
-  const [githubResults, redditResults, keybaseResults, devtoResults, mastodonResults, wikipedia, ddg, bing, nameAnalysis, kenyaIntel, socialProfiles] = await Promise.all([
+  const [githubResults, redditResults, keybaseResults, devtoResults, mastodonResults, wikipedia, ddg, bing, firecrawl, nameAnalysis, kenyaIntel, socialProfiles] = await Promise.all([
     checkGithub(usernames),
     checkReddit(usernames),
     checkKeybase(usernames),
@@ -1432,6 +1460,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
     searchWikipedia(name),
     checkDuckDuckGo(name),
     checkBingSearch(name),
+    checkFirecrawlSearch(`"${name}"`),
     checkNameAnalysis(parts.first || name),
     searchKenyaIntel(name),
     searchSocialProfiles(name),
@@ -1496,7 +1525,7 @@ async function gatherName(nameInput: string): Promise<Record<string, unknown>> {
     name_analysis: nameAnalysis,
     kenya_intel: kenyaIntel,
     social_profiles: socialProfiles,
-    web_intel: { ddg, bing },
+    web_intel: { ddg, bing, firecrawl },
     search_links: {
       "Google (full name)": `https://www.google.com/search?q=${encodedFull}`,
       "Google News": `https://www.google.com/search?q=${encodedFull}&tbm=nws`,
