@@ -315,11 +315,12 @@ function renderWebIntel(d, grid) {
   const wi = d.web_intel;
   if (!wi) return;
 
-  const ddg  = wi.ddg  || {};
-  const bing = wi.bing || {};
+  const ddg       = wi.ddg       || {};
+  const bing      = wi.bing      || {};
+  const firecrawl = wi.firecrawl || {};
 
   // Nothing to show at all
-  if (!ddg.found && !bing.configured && !bing.results?.length) return;
+  if (!ddg.found && !bing.configured && !bing.results?.length && !firecrawl.results?.length) return;
 
   let html = '';
 
@@ -380,6 +381,19 @@ function renderWebIntel(d, grid) {
     html += `<div class="wi-related">${ddg.related_topics.map(t => `
       <a href="${esc(t.url)}" target="_blank" rel="noopener" class="wi-related-item">${esc(t.text)}</a>`
     ).join('')}</div>`;
+  }
+
+  // Firecrawl enriched results
+  if (firecrawl.configured && firecrawl.results?.length) {
+    html += `<div class="wi-section-label"><i class="fa-solid fa-fire"></i> Web Results <span style="font-size:11px;color:var(--text3);font-weight:400">via Firecrawl</span></div>`;
+    html += `<div class="wi-results">${firecrawl.results.map(r => `
+      <a href="${esc(r.url)}" target="_blank" rel="noopener" class="wi-result">
+        <div class="wi-result-title">${esc(r.title)}</div>
+        <div class="wi-result-url">${esc(r.display_url)}</div>
+        <div class="wi-result-snippet">${esc(r.snippet)}</div>
+      </a>`).join('')}</div>`;
+  } else if (firecrawl.configured && firecrawl.error) {
+    html += `<div class="no-data"><i class="fa-solid fa-fire"></i> Firecrawl: ${esc(String(firecrawl.error))}</div>`;
   }
 
   if (!html) return;
@@ -1114,7 +1128,10 @@ function renderOsintDoc(d, targetEl, grid) {
   const kPhoneCount = ph.kenya_phone_mentions?.results?.length || 0;
   const webCount    = (nm.web_intel?.bing?.results?.length || 0)
                     + (em.web_intel?.bing?.results?.length || 0)
-                    + (ph.web_intel?.bing?.results?.length || 0);
+                    + (ph.web_intel?.bing?.results?.length || 0)
+                    + (nm.web_intel?.firecrawl?.results?.length || 0)
+                    + (em.web_intel?.firecrawl?.results?.length || 0)
+                    + (ph.web_intel?.firecrawl?.results?.length || 0);
   const breachCount  = em.breach_data?.count || 0;
   const hasGravatar  = em.gravatar?.exists === true;
   const hasCallerName = !!(ph.reverse_lookup?.caller_name);
@@ -1381,6 +1398,11 @@ function renderOsintDoc(d, targetEl, grid) {
     ...(em.web_intel?.bing?.results || []),
     ...(ph.web_intel?.bing?.results || []),
   ];
+  const allFirecrawlResults = [
+    ...(nm.web_intel?.firecrawl?.results || []),
+    ...(em.web_intel?.firecrawl?.results || []),
+    ...(ph.web_intel?.firecrawl?.results || []),
+  ];
 
   const ddgAbstract = nm.web_intel?.ddg?.abstract;
   if (ddgAbstract) {
@@ -1399,9 +1421,14 @@ function renderOsintDoc(d, targetEl, grid) {
   }
 
   if (allWebResults.length) {
-    sec4 += `<div class="doc-subsection-title">Web Results (${allWebResults.length} total via DuckDuckGo)</div>`;
+    sec4 += `<div class="doc-subsection-title">Web Results (${allWebResults.length} total)</div>`;
     sec4 += docResultList(allWebResults);
-  } else {
+  }
+  if (allFirecrawlResults.length) {
+    sec4 += `<div class="doc-subsection-title" style="margin-top:14px"><i class="fa-solid fa-fire" style="color:var(--red);margin-right:6px"></i>Firecrawl Results (${allFirecrawlResults.length} total)</div>`;
+    sec4 += docResultList(allFirecrawlResults);
+  }
+  if (!allWebResults.length && !allFirecrawlResults.length) {
     sec4 += '<p class="doc-empty">No web results returned. Subject may have a low public online presence.</p>';
   }
 
@@ -1558,6 +1585,9 @@ function renderOsintDoc(d, targetEl, grid) {
     { name: 'DuckDuckGo HTML Search (Name)',     what: 'Open web results for name query',                                                                                                                         found: (nm.web_intel?.bing?.results?.length || 0) > 0, skip: !t.name },
     { name: 'DuckDuckGo HTML Search (Email)',    what: 'Open web results for email query',                                                                                                                        found: (em.web_intel?.bing?.results?.length || 0) > 0, skip: !t.email },
     { name: 'DuckDuckGo HTML Search (Phone)',    what: 'Open web results for phone query',                                                                                                                        found: (ph.web_intel?.bing?.results?.length || 0) > 0, skip: !t.phone },
+    { name: 'Firecrawl Search (Name)',           what: 'Enriched web results for name query via Firecrawl',                                                                                                      found: (nm.web_intel?.firecrawl?.results?.length || 0) > 0, skip: !t.name || !nm.web_intel?.firecrawl?.configured },
+    { name: 'Firecrawl Search (Email)',          what: 'Enriched web results for email query via Firecrawl',                                                                                                     found: (em.web_intel?.firecrawl?.results?.length || 0) > 0, skip: !t.email || !em.web_intel?.firecrawl?.configured },
+    { name: 'Firecrawl Search (Phone)',          what: 'Enriched web results for phone query via Firecrawl',                                                                                                     found: (ph.web_intel?.firecrawl?.results?.length || 0) > 0, skip: !t.phone || !ph.web_intel?.firecrawl?.configured },
     { name: 'Kenya News Sites (DDG scrape)',      what: 'Nation, Standard, Tuko, The Star, Citizen, Business Daily, KBC, Capital FM',                                                                             found: kNewsCount > 0,         skip: !t.name },
     { name: 'Kenya Social & Directories',        what: 'Twitter/X, Facebook, LinkedIn, Instagram, TikTok, Yellow Pages KE, PigiaMe, Jiji, BrighterMonday, eCitizen, Judiciary, M-Changa',                       found: kSocCount > 0,          skip: !t.name },
     { name: 'Kenya Gov & Institutional (DDG)',   what: 'NTSA, BRS, KRA, LSK, KMPDB, Kenya Gazette, MyGov, KACC, NEMA, NHIF, NSSF, Judiciary, eCitizen, KIPI',                                                   found: (nm.kenya_intel?.gov?.results?.length || 0) > 0, skip: !t.name },
