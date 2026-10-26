@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ tender.title }} - Skystar Tender Intelligence{% endblock %}
+{% block content %}
+<h1>{{ tender.title }}</h1>
+<p class="subtitle">{{ tender.procuring_entity or 'Procuring entity unknown' }} &middot; {{ tender.source }}</p>
+
+<div class="cards">
+  <div class="card"><div class="value">{{ tender.relevance_score|int }}</div><div class="label">Relevance score</div></div>
+  <div class="card"><div class="value">{{ requirement_items|length }}</div><div class="label">Requirement items</div></div>
+  <div class="card"><div class="value">{{ proposals|length }}</div><div class="label">Proposals</div></div>
+</div>
+
+<h2>Tender details</h2>
+<table>
+  <tr><th>Source URL</th><td><a href="{{ tender.url }}">{{ tender.url }}</a></td></tr>
+  <tr><th>Tender / reference no.</th><td>{{ tender.external_id or '-' }}</td></tr>
+  <tr><th>Category</th><td>{{ tender.category or '-' }}</td></tr>
+  <tr><th>Country</th><td>{{ tender.country }}</td></tr>
+  <tr><th>Closing</th><td>{{ tender.closing_at.strftime('%d %B %Y %H:%M') if tender.closing_at else '-' }}</td></tr>
+  <tr><th>Tender fee</th><td>{{ tender.tender_fee or '-' }}</td></tr>
+  <tr><th>Status</th><td>{{ tender.status }}</td></tr>
+  <tr><th>Matched categories</th><td>{{ relevance.matched_categories|join(', ') or '-' }}</td></tr>
+  <tr><th>Matched terms</th><td>{{ relevance.matched_terms|join(', ') or '-' }}</td></tr>
+</table>
+
+<h2>Documents</h2>
+{% if documents %}
+<table>
+  <tr><th>Type</th><th>Filename</th><th>Local path</th></tr>
+  {% for doc in documents %}
+  <tr><td>{{ doc.doc_type }}</td><td>{{ doc.filename or '-' }}</td><td>{{ doc.local_path or 'not downloaded' }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">
+  No documents attached yet. This prototype does not auto-download tender PDFs
+  (needs live network access -- see README). Add a TenderDocument row with a
+  local_path to enable extraction.
+</p>
+{% endif %}
+
+<form class="inline" method="post" action="{{ url_for('extract_tender', tender_id=tender.id) }}">
+  <button type="submit">Extract requirements from documents</button>
+</form>
+
+<h2>Requirement items</h2>
+{% if requirement_items %}
+<table>
+  <tr><th>Type</th><th>Description</th><th>Mandatory</th></tr>
+  {% for item in requirement_items %}
+  <tr>
+    <td>{{ item.item_type }}</td>
+    <td>{{ item.description }}</td>
+    <td>{{ 'Yes' if item.mandatory else 'No' }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">
+  No requirement items extracted yet. "Generate proposal" below will still work,
+  falling back to a single requirement stub from the tender title.
+</p>
+{% endif %}
+
+<form class="inline" method="post" action="{{ url_for('generate_proposal', tender_id=tender.id) }}">
+  <button type="submit">Generate proposal</button>
+</form>
+
+<h2>Proposals</h2>
+{% if proposals %}
+<table>
+  <tr><th>Status</th><th>Grand total (KES)</th><th>Unpriced lines</th><th>Generated</th><th></th></tr>
+  {% for proposal in proposals %}
+  <tr>
+    <td>{{ proposal.status }}</td>
+    <td>{{ '%.2f'|format(proposal.grand_total) }}</td>
+    <td>{{ proposal.unpriced_line_count }}</td>
+    <td>{{ proposal.generated_at.strftime('%d %b %Y %H:%M') if proposal.generated_at else '-' }}</td>
+    <td><a href="{{ url_for('proposal_preview', proposal_id=proposal.id) }}">View</a></td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p class="muted">No proposals generated yet for this tender.</p>
+{% endif %}
+{% endblock %}

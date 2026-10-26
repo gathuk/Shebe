@@ -1,0 +1,44 @@
+name: Tender Intel weekly summary
+
+# Sends the Skystar tender_intel weekly digest every Monday morning
+# (06:00 UTC = 09:00 Nairobi/EAT). See tender_intel/README.md, section
+# "Weekly summary email", for what this does and how to set it up.
+#
+# Required repo secrets:
+#   GMAIL_ADDRESS        Gmail account to send the digest from.
+#   GMAIL_APP_PASSWORD   A Gmail "App Password" for that account (not its
+#                         login password) -- Google Account > Security >
+#                         2-Step Verification > App passwords.
+#
+# Required repo variable (Settings > Secrets and variables > Actions >
+# Variables), or edit SUMMARY_RECIPIENTS below directly:
+#   SUMMARY_RECIPIENTS   Comma-separated recipient list, e.g.
+#                         "info@skystar.co.ke".
+#
+# Use "Run workflow" (workflow_dispatch, below) to send a test run on
+# demand without waiting for Monday.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  weekly-summary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r tender_intel/requirements.txt
+
+      - name: Send weekly summary
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          SUMMARY_RECIPIENTS: ${{ vars.SUMMARY_RECIPIENTS || 'info@skystar.co.ke' }}
+        run: python tender_intel/scripts/send_weekly_summary.py
