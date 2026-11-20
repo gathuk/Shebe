@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupForm();
   document.getElementById('newSearchBtn').addEventListener('click', resetToSearch);
   document.getElementById('exportJsonBtn').addEventListener('click', exportJson);
+  document.getElementById('emailReportBtn').addEventListener('click', emailReport);
 });
 
 function setupForm() {
@@ -1884,6 +1885,58 @@ function show(id) { document.getElementById(id).classList.remove('hidden'); }
 function hide(id) { document.getElementById(id).classList.add('hidden'); }
 
 // ── Export JSON ──────────────────────────────────────────────
+function emailReport() {
+  if (!lastResult) return;
+  const d = lastResult;
+  const ar = d.agent_report;
+  const target = d.target || {};
+  const name  = target.name  || d.name?.query  || '';
+  const email = target.email || d.email?.query || '';
+  const phone = target.phone || d.phone?.query || '';
+  const subject = `[Shebe OSINT] Report: ${name || email || phone || 'Subject'}`;
+
+  let body = `OSINT INTELLIGENCE REPORT\nGenerated: ${new Date().toLocaleString()}\n`;
+  body += `Tool: https://shebe-osint.netlify.app\n\n`;
+  body += `TARGET\n`;
+  if (name)  body += `  Name:  ${name}\n`;
+  if (email) body += `  Email: ${email}\n`;
+  if (phone) body += `  Phone: ${phone}\n`;
+  body += `\n`;
+
+  if (ar && ar.type === 'report') {
+    body += `AI INTELLIGENCE BRIEF (${ar.confidence || 'UNKNOWN'} CONFIDENCE)\n`;
+    if (ar.subject_summary) body += `${ar.subject_summary}\n\n`;
+    if (ar.narrative) body += `${ar.narrative}\n\n`;
+    if (ar.key_findings?.length) {
+      body += `KEY FINDINGS\n`;
+      ar.key_findings.forEach((f, i) => { body += `  ${i + 1}. ${f}\n`; });
+      body += `\n`;
+    }
+  }
+
+  // Email registrations
+  const regs = d.email?.registrations || [];
+  const found = regs.filter(r => r.registered);
+  if (found.length) {
+    body += `EMAIL REGISTRATIONS (${found.length} platforms)\n`;
+    found.forEach(r => { body += `  • ${r.platform}\n`; });
+    body += `\n`;
+  }
+
+  // GitHub
+  const ghProfiles = (d.name?.github_profiles || []).filter(p => p.found);
+  if (ghProfiles.length) {
+    body += `GITHUB PROFILES\n`;
+    ghProfiles.forEach(p => { body += `  • github.com/${p.username} — ${p.name || ''} (${p.public_repos || 0} repos)\n`; });
+    body += `\n`;
+  }
+
+  body += `---\nFull report: https://shebe-osint.netlify.app\n`;
+
+  const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = mailto;
+}
+
 function exportJson() {
   if (!lastResult) return;
   const blob = new Blob([JSON.stringify(lastResult, null, 2)], { type: 'application/json' });
