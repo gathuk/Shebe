@@ -40,7 +40,7 @@ function setupForm() {
     const email = (document.getElementById('hybridEmail')?.value || '').trim();
     const phone = (document.getElementById('hybridPhone')?.value || '').trim();
     if (!agentQuery && !name && !email && !phone) {
-      showError('Describe who you're looking for — name, email, phone, or free text');
+      showError("Describe who you're looking for — name, email, phone, or free text");
       show('resultsSection');
       return;
     }
