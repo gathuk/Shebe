@@ -44,25 +44,39 @@
         <input type="hidden" id="queryType" value="hybrid" />
 
         <div id="hybridInputGroup" class="hybrid-input-group">
-          <div class="input-group">
-            <i class="fa-solid fa-user input-icon"></i>
-            <input type="text" id="hybridName" class="search-input" placeholder="Full name (optional, e.g. Jane Smith)" />
+          <div class="agent-query-wrap">
+            <i class="fa-solid fa-magnifying-glass agent-query-icon"></i>
+            <textarea id="agentQuery" class="agent-query-input" rows="2"
+              placeholder="Who is Jane Smith? Or paste an email, phone, username, or anything you have…"></textarea>
           </div>
-          <div class="input-group">
-            <i class="fa-solid fa-envelope input-icon"></i>
-            <input type="text" id="hybridEmail" class="search-input" placeholder="Email address (optional)" />
+
+          <div class="agent-extras-toggle" onclick="toggleExtras()">
+            <i class="fa-solid fa-sliders"></i> Add specific identifiers
+            <i class="fa-solid fa-chevron-down" id="extrasChevron"></i>
           </div>
-          <div class="input-group">
-            <i class="fa-solid fa-phone input-icon"></i>
-            <input type="text" id="hybridPhone" class="search-input" placeholder="Phone number (optional, e.g. +254 0712 345 678 or use * for unknown digits)" />
+
+          <div class="agent-extras hidden" id="agentExtras">
+            <div class="input-group">
+              <i class="fa-solid fa-user input-icon"></i>
+              <input type="text" id="hybridName" class="search-input" placeholder="Full name" />
+            </div>
+            <div class="input-group">
+              <i class="fa-solid fa-envelope input-icon"></i>
+              <input type="text" id="hybridEmail" class="search-input" placeholder="Email address" />
+            </div>
+            <div class="input-group">
+              <i class="fa-solid fa-phone input-icon"></i>
+              <input type="text" id="hybridPhone" class="search-input" placeholder="Phone number" />
+            </div>
           </div>
+
           <button type="submit" class="search-btn hybrid-submit-btn">
-            <span class="btn-text">Generate Report</span>
+            <span class="btn-text">Investigate</span>
             <i class="fa-solid fa-arrow-right btn-icon"></i>
           </button>
         </div>
 
-        <p class="input-hint" id="inputHint">Fill in as many fields as you have — the more provided, the richer the cross-referenced report.</p>
+        <p class="input-hint" id="inputHint">Describe who you're looking for — name, email, phone, or free text. The agent will investigate and cross-reference all sources.</p>
       </form>
 
       <!-- Disclaimer -->
@@ -84,7 +98,8 @@
         <div class="loader-step active" id="step1"><i class="fa-solid fa-check-circle"></i><span>Gathering name intelligence…</span></div>
         <div class="loader-step" id="step2"><i class="fa-solid fa-circle-notch fa-spin"></i><span>Gathering email intelligence…</span></div>
         <div class="loader-step" id="step3"><i class="fa-regular fa-circle"></i><span>Gathering phone intelligence…</span></div>
-        <div class="loader-step" id="step4"><i class="fa-regular fa-circle"></i><span>Agent synthesizing…</span></div>
+        <div class="loader-step" id="step4"><i class="fa-regular fa-circle"></i><span>Investigating leads…</span></div>
+        <div class="loader-step" id="step5"><i class="fa-regular fa-circle"></i><span>Agent synthesizing…</span></div>
       </div>
     </div>
   </div>

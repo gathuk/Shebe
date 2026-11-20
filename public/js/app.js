@@ -35,24 +35,34 @@ document.addEventListener('DOMContentLoaded', () => {
 function setupForm() {
   document.getElementById('searchForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const name  = document.getElementById('hybridName').value.trim();
-    const email = document.getElementById('hybridEmail').value.trim();
-    const phone = document.getElementById('hybridPhone').value.trim();
-    if (!name && !email && !phone) {
-      showError('Provide at least one of: name, email, or phone number');
+    const agentQuery = (document.getElementById('agentQuery')?.value || '').trim();
+    const name  = (document.getElementById('hybridName')?.value || '').trim();
+    const email = (document.getElementById('hybridEmail')?.value || '').trim();
+    const phone = (document.getElementById('hybridPhone')?.value || '').trim();
+    if (!agentQuery && !name && !email && !phone) {
+      showError('Describe who you're looking for — name, email, phone, or free text');
       show('resultsSection');
       return;
     }
-    await runSearch('hybrid', { name, email, phone });
+    await runSearch('hybrid', { query: agentQuery, name, email, phone });
   });
+}
+
+function toggleExtras() {
+  const el = document.getElementById('agentExtras');
+  const ch = document.getElementById('extrasChevron');
+  if (!el) return;
+  el.classList.toggle('hidden');
+  if (ch) ch.style.transform = el.classList.contains('hidden') ? '' : 'rotate(180deg)';
 }
 
 // ── Search ───────────────────────────────────────────────────
 const STEP_LABELS = {
-  name:  'Gathering name intelligence…',
-  email: 'Gathering email intelligence…',
-  phone: 'Gathering phone intelligence…',
-  agent: 'Agent synthesizing intelligence…',
+  name:   'Gathering name intelligence…',
+  email:  'Gathering email intelligence…',
+  phone:  'Gathering phone intelligence…',
+  round2: 'Investigating leads…',
+  agent:  'Agent synthesizing intelligence…',
 };
 
 async function runSearch(type, fields) {
@@ -89,7 +99,7 @@ async function runSearch(type, fields) {
       const decoder = new TextDecoder();
       let buffer = '';
       let stepIdx = 0;
-      const stepEls = ['step1', 'step2', 'step3', 'step4'];
+      const stepEls = ['step1', 'step2', 'step3', 'step4', 'step5'];
 
       function advanceStep(label) {
         if (stepIdx > 0 && stepIdx - 1 < stepEls.length) {
@@ -151,8 +161,8 @@ async function runSearch(type, fields) {
 function showLoading() {
   hide('resultsSection');
   show('loadingState');
-  const icons = ['fa-solid fa-check-circle', 'fa-solid fa-circle-notch fa-spin', 'fa-regular fa-circle', 'fa-regular fa-circle'];
-  ['step1','step2','step3','step4'].forEach((id, i) => {
+  const icons = ['fa-solid fa-check-circle', 'fa-solid fa-circle-notch fa-spin', 'fa-regular fa-circle', 'fa-regular fa-circle', 'fa-regular fa-circle'];
+  ['step1','step2','step3','step4','step5'].forEach((id, i) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.classList.remove('active', 'done');
@@ -164,7 +174,8 @@ function showLoading() {
 function resetToSearch() {
   hide('resultsSection');
   hide('loadingState');
-  document.getElementById('hybridName').focus();
+  const aq = document.getElementById('agentQuery');
+  if (aq) aq.focus();
   const cb = document.getElementById('cacheBadge');
   if (cb) cb.remove();
 }
@@ -182,14 +193,15 @@ function showCacheBadge() {
 }
 
 function clearAndRerun() {
-  const name  = document.getElementById('hybridName').value.trim();
-  const email = document.getElementById('hybridEmail').value.trim();
-  const phone = document.getElementById('hybridPhone').value.trim();
-  const ck = cacheKey('hybrid', { name, email, phone });
+  const agentQuery = (document.getElementById('agentQuery')?.value || '').trim();
+  const name  = (document.getElementById('hybridName')?.value || '').trim();
+  const email = (document.getElementById('hybridEmail')?.value || '').trim();
+  const phone = (document.getElementById('hybridPhone')?.value || '').trim();
+  const ck = cacheKey('hybrid', { query: agentQuery, name, email, phone });
   try { localStorage.removeItem(ck); } catch {}
   const cb = document.getElementById('cacheBadge');
   if (cb) cb.remove();
-  runSearch('hybrid', { name, email, phone });
+  runSearch('hybrid', { query: agentQuery, name, email, phone });
 }
 
 function showError(msg) {
@@ -1114,6 +1126,53 @@ function renderOsintDoc(d, targetEl, grid) {
         ${methHtml ? `<div class="agent-methodology"><div class="agent-section-label"><i class="fa-solid fa-flask"></i> Methodology</div><ul class="agent-method-list">${methHtml}</ul></div>` : ''}
       </div>`;
     grid.insertAdjacentElement('afterbegin', briefEl);
+  }
+
+  // ── Round 2 Lead Investigation ───────────────────────────
+  const r2 = d.round2?.round2_results;
+  if (r2?.length) {
+    const r2El = document.createElement('div');
+    r2El.className = 'agent-brief-card';
+    r2El.style.borderColor = 'rgba(16,185,129,0.3)';
+    let r2html = `<div class="agent-brief-header"><div class="agent-brief-title-row">
+      <i class="fa-solid fa-magnifying-glass" style="color:var(--green)"></i>
+      <span class="agent-brief-title" style="color:var(--green)">Agent Lead Investigation</span>
+      <span class="confidence-badge conf-high">${r2.length} lead${r2.length > 1 ? 's' : ''} explored</span>
+    </div></div><div class="agent-brief-body">`;
+
+    for (const lead of r2) {
+      if (lead.username && lead.results?.results?.length) {
+        r2html += `<div class="agent-section-label"><i class="fa-solid fa-user"></i> @${esc(lead.username)} across platforms</div>`;
+        r2html += `<div class="wi-results">${lead.results.results.map(r => `
+          <a href="${esc(r.url)}" target="_blank" rel="noopener" class="wi-result">
+            <div class="wi-result-title">${esc(r.title)}</div>
+            <div class="wi-result-url">${esc(r.display_url)}</div>
+            <div class="wi-result-snippet">${esc(r.snippet)}</div>
+          </a>`).join('')}</div>`;
+      }
+      if (lead.platform && lead.results?.results?.length) {
+        const pLabel = lead.platform === 'linkedin' ? 'LinkedIn' : lead.platform === 'instagram_twitter' ? 'Instagram / Twitter' : 'TikTok / Facebook';
+        r2html += `<div class="agent-section-label"><i class="fa-solid fa-share-nodes"></i> ${esc(pLabel)}</div>`;
+        r2html += `<div class="wi-results">${lead.results.results.map(r => `
+          <a href="${esc(r.url)}" target="_blank" rel="noopener" class="wi-result">
+            <div class="wi-result-title">${esc(r.title)}</div>
+            <div class="wi-result-url">${esc(r.display_url)}</div>
+            <div class="wi-result-snippet">${esc(r.snippet)}</div>
+          </a>`).join('')}</div>`;
+      }
+      if (lead.email_pattern && lead.results?.results?.length) {
+        r2html += `<div class="agent-section-label"><i class="fa-solid fa-envelope"></i> Email pattern: ${esc(lead.email_pattern)}</div>`;
+        r2html += `<div class="wi-results">${lead.results.results.map(r => `
+          <a href="${esc(r.url)}" target="_blank" rel="noopener" class="wi-result">
+            <div class="wi-result-title">${esc(r.title)}</div>
+            <div class="wi-result-url">${esc(r.display_url)}</div>
+            <div class="wi-result-snippet">${esc(r.snippet)}</div>
+          </a>`).join('')}</div>`;
+      }
+    }
+    r2html += '</div>';
+    r2El.innerHTML = r2html;
+    grid.insertAdjacentElement('afterbegin', r2El);
   }
 
   // ── Counts ────────────────────────────────────────────────
