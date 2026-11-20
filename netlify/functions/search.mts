@@ -1658,6 +1658,85 @@ async function gatherHybrid(input: { name?: string; email?: string; phone?: stri
   return assembleHybrid(name, email, phone, nameResult, emailResult, phoneResult);
 }
 
+// ── Query Parser & Email Pattern Generator ───────────────────────────────────
+
+function parseQuery(raw: string): { name: string; email: string; phone: string } {
+  let text = raw.trim();
+  const emailMatch = text.match(/\b[\w.+%-]+@[\w-]+\.[a-z]{2,}\b/i);
+  const email = emailMatch ? emailMatch[0] : "";
+  if (email) text = text.replace(email, " ").trim();
+
+  const phoneMatch = text.match(/(?:\+|00)?[\d][\d\s().-]{6,}[\d]/);
+  const phone = phoneMatch ? phoneMatch[0].replace(/\s+/g, " ").trim() : "";
+  if (phone) text = text.replace(phone, " ").trim();
+
+  text = text.replace(/@(\w+)/, "$1").trim();
+  const name = text.replace(/\b(find|search|lookup|research|who is|tell me about|osint|investigate)\b/gi, "").replace(/\s{2,}/g, " ").trim();
+
+  return { name, email, phone };
+}
+
+function generateEmailPatterns(name: string): string[] {
+  const parts = name.trim().split(/\s+/).map(p => p.toLowerCase().replace(/[^a-z0-9]/g, ""));
+  if (parts.length < 2) return [];
+  const [first, last] = [parts[0], parts[parts.length - 1]];
+  if (!first || !last) return [];
+  const domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com"];
+  const patterns = [
+    `${first}.${last}`,
+    `${first}${last}`,
+    `${last}.${first}`,
+    `${first[0]}${last}`,
+    `${first}${last[0]}`,
+    `${first}_${last}`,
+  ];
+  return patterns.flatMap(p => domains.map(d => `${p}@${d}`)).slice(0, 10);
+}
+
+async function runRound2(params: {
+  foundUsernames: string[];
+  name: string;
+  email: string;
+}): Promise<Record<string, unknown>> {
+  const tasks: Promise<unknown>[] = [];
+
+  for (const u of params.foundUsernames.slice(0, 2)) {
+    tasks.push(
+      checkFirecrawlSearch(`"${u}" site:instagram.com OR site:twitter.com OR site:tiktok.com OR site:linkedin.com OR site:github.com`)
+        .then(r => ({ username: u, results: r }))
+    );
+  }
+
+  if (params.name) {
+    tasks.push(
+      checkFirecrawlSearch(`"${params.name}" site:linkedin.com/in OR site:linkedin.com/pub`)
+        .then(r => ({ platform: "linkedin", results: r }))
+    );
+    tasks.push(
+      checkFirecrawlSearch(`"${params.name}" site:instagram.com OR site:twitter.com OR site:x.com`)
+        .then(r => ({ platform: "instagram_twitter", results: r }))
+    );
+    tasks.push(
+      checkFirecrawlSearch(`"${params.name}" site:tiktok.com OR site:facebook.com`)
+        .then(r => ({ platform: "tiktok_facebook", results: r }))
+    );
+  }
+
+  if (params.name && !params.email) {
+    const patterns = generateEmailPatterns(params.name).slice(0, 3);
+    for (const pattern of patterns) {
+      tasks.push(
+        checkFirecrawlSearch(`"${pattern}"`)
+          .then(r => ({ email_pattern: pattern, results: r }))
+      );
+    }
+  }
+
+  const settled = await Promise.allSettled(tasks);
+  const results = settled.map(s => s.status === "fulfilled" ? s.value : null).filter(Boolean);
+  return { round2_results: results };
+}
+
 // ── Agent Intelligence Synthesis ─────────────────────────────────────────────
 
 function redactForAgent(obj: unknown, depth = 0): unknown {
@@ -1762,7 +1841,7 @@ export default async (req: Request, _context: Context) => {
 
   const queryType = (data.type ?? "").toLowerCase().trim();
 
-  if (!["email", "phone", "name", "hybrid"].includes(queryType)) {
+  if (!["email", "phone", "name", "hybrid", "agent_complete"].includes(queryType)) {
     return new Response(JSON.stringify({ error: "type must be one of: email, phone, name, hybrid" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
@@ -1777,11 +1856,17 @@ export default async (req: Request, _context: Context) => {
   };
 
   if (queryType === "hybrid") {
-    const name = (data.name ?? "").trim();
-    const email = (data.email ?? "").trim();
-    const phone = (data.phone ?? "").trim();
+    let name = (data.name ?? "").trim();
+    let email = (data.email ?? "").trim();
+    let phone = (data.phone ?? "").trim();
+    if (data.query && String(data.query).trim()) {
+      const parsed = parseQuery(String(data.query).trim());
+      if (!name) name = parsed.name;
+      if (!email) email = parsed.email;
+      if (!phone) phone = parsed.phone;
+    }
     if (!name && !email && !phone) {
-      return new Response(JSON.stringify({ error: "Provide at least one of: name, email, phone" }), {
+      return new Response(JSON.stringify({ error: "Provide at least one of: name, email, phone, or a free-text query" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
@@ -1833,6 +1918,15 @@ export default async (req: Request, _context: Context) => {
 
           const result = assembleHybrid(name, email, phone, nameResult, emailResult, phoneResult);
           result["meta"] = { generated_at: new Date().toISOString(), query_type: "hybrid", query };
+
+          send({ type: "progress", step: "round2", label: "Investigating leads…" });
+          const foundUsernames: string[] = [
+            ...(((result.name as Record<string, unknown>)?.["github_profiles"] as Array<Record<string, unknown>> ?? []).filter(p => p.found).map(p => String(p.username ?? ""))),
+            ...(((result.name as Record<string, unknown>)?.["reddit_profiles"] as Array<Record<string, unknown>> ?? []).filter(p => p.found).map(p => String(p.username ?? ""))),
+            ...(((result.name as Record<string, unknown>)?.["keybase_profiles"] as Array<Record<string, unknown>> ?? []).filter(p => p.found).map(p => String(p.username ?? ""))),
+          ].filter(Boolean).slice(0, 3);
+          const round2 = await runRound2({ foundUsernames, name, email });
+          result["round2"] = round2;
 
           send({ type: "progress", step: "agent", label: "Agent synthesizing intelligence…" });
           const agentAnalysis = await synthesizeWithAgent(name, email, phone, result);
